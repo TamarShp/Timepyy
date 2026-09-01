@@ -5,7 +5,6 @@ from analytics import ScheduleAnalytics
 from gui import ScheduleApp
 
 print(">>> STEP 1: Starting main.py directly...", flush=True)
-print("Arin was here")
 
 try:
     print(">>> STEP 2: Loading database...", flush=True)

@@ -423,7 +423,7 @@ class EventActionDialog(tk.Toplevel):
         self.entry_dur.insert(0, str(self.event_data["duration_minutes"]))
 
         self.entry_buf = create_form_row(5, "Buffer (minutes):")
-        self.entry_buf.insert(0, str(self.event_data.get("buffer_before_minutes", 15)))
+        self.entry_buf.insert(0, str(self.event_data.get("buffer_before_minutes", 0)))
 
         # שדה התזכורת עם StringVar מפורש
         lbl_rem = tk.Label(
@@ -441,7 +441,7 @@ class EventActionDialog(tk.Toplevel):
             state="readonly"
         )
 
-        # המרה בטוחה מערך קיים
+        # safe conversion from event_data to integer for reminder minutes
         try:
             curr_val = int(self.event_data.get("reminder_min", 0))
         except (ValueError, TypeError):
@@ -453,7 +453,7 @@ class EventActionDialog(tk.Toplevel):
 
         form_frame.columnconfigure(1, weight=1)
 
-        # כפתורים
+        # button frame
         btn_frame = tk.Frame(container, bg="#f8fafc")
         btn_frame.pack(fill="x", pady=(18, 0))
 
@@ -486,7 +486,7 @@ class EventActionDialog(tk.Toplevel):
             new_dur = int(self.entry_dur.get().strip())
             new_buf = int(self.entry_buf.get().strip())
 
-            # מיפוי הבחירה מתוך ה-StringVar
+            # mapping the selected reminder string to its corresponding minute value
             selected_str = self.reminder_var.get().strip()
             rem_map = {
                 "None": 0,
@@ -539,6 +539,149 @@ class EventActionDialog(tk.Toplevel):
             messagebox.showinfo("Deleted", "Event removed from calendar.")
             self.on_update_callback()
             self.destroy()
+class RoutineActionDialog(tk.Toplevel):
+    """Allows modifying or skipping a single instance of a recurring Core Habit without breaking the routine."""
+    def __init__(self, app: "ScheduleApp", db: ScheduleDatabase, routine_data: dict, target_date: date, on_update_callback):
+        super().__init__(app.root)
+        self.app = app
+        self.db = db
+        self.routine_data = routine_data
+        self.slot: RoutineSlot = routine_data["slot"]
+        self.target_date = target_date
+        self.on_update_callback = on_update_callback
+
+        self.title(f"Manage Habit Instance: {self.slot.title}")
+        self.geometry("460x540")
+        self.resizable(False, False)
+        self.transient(app.root)
+        self.grab_set()
+        self.configure(bg="#f8fafc")
+
+        self._build_ui()
+
+    def _build_ui(self):
+        container = tk.Frame(self, bg="#f8fafc", padx=20, pady=16)
+        container.pack(fill="both", expand=True)
+
+        tk.Label(
+            container, text=f"📌 {self.slot.title}", font=("Helvetica", 14, "bold"),
+            bg="#f8fafc", fg="#1e3a8a"
+        ).pack(anchor="w")
+
+        tk.Label(
+            container, text=f"Editing instance for: {self.target_date.strftime('%A, %b %d, %Y')}",
+            font=("Helvetica", 10), bg="#f8fafc", fg="#64748b"
+        ).pack(anchor="w", pady=(2, 12))
+
+        form_frame = tk.Frame(container, bg="#ffffff", padx=16, pady=14, relief="solid", bd=1, highlightbackground="#cbd5e1", highlightthickness=1)
+        form_frame.pack(fill="x", pady=4)
+
+        def create_form_row(row_idx, label_text):
+            lbl = tk.Label(form_frame, text=label_text, bg="#ffffff", fg="#0f172a", font=("Helvetica", 10, "bold"), anchor="w")
+            lbl.grid(row=row_idx, column=0, sticky="w", pady=6, padx=(0, 12))
+            entry = ttk.Entry(form_frame, width=22)
+            entry.grid(row=row_idx, column=1, sticky="ew", pady=6)
+            return entry
+
+        self.entry_title = create_form_row(0, "Activity Name:")
+        self.entry_title.insert(0, self.slot.title)
+
+        self.entry_time = create_form_row(1, "Start Time (HH:MM):")
+        self.entry_time.insert(0, self.slot.start_clock.strftime("%H:%M"))
+
+        self.entry_dur = create_form_row(2, "Duration (min):")
+        self.entry_dur.insert(0, str(self.slot.duration_minutes))
+
+        self.entry_buf = create_form_row(3, "Buffer (min):")
+        self.entry_buf.insert(0, str(self.slot.buffer_before_minutes))
+
+        lbl_rem = tk.Label(form_frame, text="Reminder Alert:", bg="#ffffff", fg="#0f172a", font=("Helvetica", 10, "bold"), anchor="w")
+        lbl_rem.grid(row=4, column=0, sticky="w", pady=6, padx=(0, 12))
+
+        self.reminder_var = tk.StringVar()
+        self.combo_reminder = ttk.Combobox(
+            form_frame, textvariable=self.reminder_var,
+            values=["None", "15 min before", "30 min before", "1 hour before"],
+            width=20, state="readonly"
+        )
+        rem_rev = {0: "None", 15: "15 min before", 30: "30 min before", 60: "1 hour before"}
+        curr_rem = self.routine_data.get("reminder_min", 0)
+        self.reminder_var.set(rem_rev.get(curr_rem, "None"))
+        self.combo_reminder.grid(row=4, column=1, sticky="ew", pady=6)
+
+        form_frame.columnconfigure(1, weight=1)
+
+        # Buttons
+        btn_frame = tk.Frame(container, bg="#f8fafc")
+        btn_frame.pack(fill="x", pady=(16, 0))
+
+        btn_save_single = tk.Button(
+            btn_frame, text="Save for This Day Only", bg="#2563eb", fg="black",
+            font=("Helvetica", 10, "bold"), padx=10, pady=7, cursor="pointinghand",
+            command=self._save_this_day_only
+        )
+        btn_save_single.pack(fill="x", pady=3)
+
+        btn_delete_single = tk.Button(
+            btn_frame, text="Skip / Delete This Day Only", bg="#fee2e2", fg="#991b1b",
+            font=("Helvetica", 10, "bold"), padx=10, pady=7, cursor="pointinghand",
+            command=self._delete_this_day_only
+        )
+        btn_delete_single.pack(fill="x", pady=3)
+
+    def _save_this_day_only(self):
+        try:
+            new_title = self.entry_title.get().strip() or self.slot.title
+            t_parts = [int(p) for p in self.entry_time.get().strip().split(":")]
+            new_time = time(t_parts[0], t_parts[1])
+            new_dur = int(self.entry_dur.get().strip())
+            new_buf = int(self.entry_buf.get().strip())
+
+            rem_map = {"None": 0, "15 min before": 15, "30 min before": 30, "1 hour before": 60}
+            new_rem = rem_map.get(self.reminder_var.get().strip(), 0)
+
+            # 1. Add exclusion for this date
+            self.db.add_routine_exclusion(self.routine_data["id"], self.target_date.isoformat())
+
+            # 2. Save as an independent single-instance event
+            start_dt = datetime.combine(self.target_date, new_time)
+            total_start = start_dt - timedelta(minutes=new_buf)
+            total_end = start_dt + timedelta(minutes=new_dur + new_buf)
+
+            self.db.save_event_record(
+                title=new_title,
+                category=self.slot.category,
+                event_date_str=self.target_date.isoformat(),
+                end_date_str=self.target_date.isoformat(),
+                start_clock_str=new_time.isoformat(),
+                duration=new_dur,
+                buf_before=new_buf,
+                buf_after=new_buf,
+                total_start_str=total_start.isoformat(),
+                total_end_str=total_end.isoformat(),
+                color_hex=self.routine_data["color_hex"],
+                recurrence_freq="None",
+                recurrence_days="",
+                reminder_min=new_rem
+            )
+
+            messagebox.showinfo("Instance Updated", f"'{new_title}' updated for {self.target_date.strftime('%d/%m/%Y')} only.")
+            self.on_update_callback()
+            self.destroy()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Invalid parameters:\n{e}")
+
+    def _delete_this_day_only(self):
+        confirm = messagebox.askyesno(
+            "Skip Instance",
+            f"Skip '{self.slot.title}' on {self.target_date.strftime('%d/%m/%Y')} only?\n(Recurring routine on other days will stay unchanged)"
+        )
+        if confirm:
+            self.db.add_routine_exclusion(self.routine_data["id"], self.target_date.isoformat())
+            messagebox.showinfo("Skipped", f"'{self.slot.title}' removed for {self.target_date.strftime('%d/%m/%Y')}.")
+            self.on_update_callback()
+            self.destroy()
 
 
 class ScheduleApp:
@@ -549,24 +692,45 @@ class ScheduleApp:
         self.root.title("TimePy - Smart Weekly & Daily Planner")
         self.root.geometry("1300x900")
         
+        # 1. עיצוב וצבעי בסיס
         self.bg_dashboard = "#edf2f7"
         self.root.configure(bg=self.bg_dashboard)
 
+        self.theme_teal = "#0f4c5c"       # כחול-טורקיז פטרול כהה ורגוע
+        self.theme_teal_btn = "#0284c7"   # טורקיז-כחול מודרני לכפתור פעולה
+        self.lbl_fg = "#164e63"           # צבע טקסט לתוויות
+
+        # 2. גבולות לוח הזמנים (ערכי ברירת מחדל עד לטעינת הפרופיל)
+        self.start_hour = 7
+        self.end_hour = 23
+        self.hour_height_px = 50
+
+        # 3. ניהול תאריכים ותצוגות
         self.current_date = date.today()
         sunday_offset = (self.current_date.weekday() + 1) % 7
         self.current_week_start = self.current_date - timedelta(days=sunday_offset)
         self.active_view = tk.StringVar(value="Week")
-        self.mindful_enabled = tk.BooleanVar(value=True)
+        self.nav_step = tk.StringVar(value="Standard")
 
+        # 4. משתני מצב לטפסים והתראות
+        self.mindful_enabled = tk.BooleanVar(value=True)
+        self.is_recurring = tk.BooleanVar(value=False)
+        self.is_multiday = tk.BooleanVar(value=False)
+        self._notified_events = set()
+
+        # 5. טעינת קטגוריות
         self.category_colors = {}
         self.load_categories_from_db()
-
-        # Top Bar
+        # -------------------------------------------------------------
+        # 1. Top Bar
+        # -------------------------------------------------------------
         top_bar = tk.Frame(root, bg=self.bg_dashboard, padx=15, pady=6)
         top_bar.pack(fill="x")
 
-        self.lbl_welcome = tk.Label(top_bar, text="Welcome to TimePy", font=("Helvetica", 13, "bold"),
-                                    bg=self.bg_dashboard, fg="#1a365d")
+        self.lbl_welcome = tk.Label(
+            top_bar, text="Welcome to TimePy", font=("Helvetica", 13, "bold"),
+            bg=self.bg_dashboard, fg=self.theme_teal
+        )
         self.lbl_welcome.pack(side="left")
 
         right_actions = tk.Frame(top_bar, bg=self.bg_dashboard)
@@ -578,143 +742,237 @@ class ScheduleApp:
         btn_edit_profile = ttk.Button(right_actions, text="⚙ Core Habits & Wellness", command=self.open_onboarding)
         btn_edit_profile.pack(side="left")
 
-        # Mindful Banner Notification
-        self.banner_frame = tk.Frame(root, bg="#ecfdf5", padx=12, pady=6, relief="solid", bd=1, highlightbackground="#a7f3d0")
+        # -------------------------------------------------------------
+        # 2. Mindful Banner Notification
+        # -------------------------------------------------------------
+        self.banner_frame = tk.Frame(root, bg="#f0fdfa", padx=12, pady=6, relief="solid", bd=1, highlightbackground="#99f6e4")
         self.lbl_banner = tk.Label(
             self.banner_frame,
             text="🌿 Friendly reminder: Have you carved out 15 minutes of quiet time or hydration for yourself today?",
-            bg="#ecfdf5", fg="#065f46", font=("Helvetica", 10, "bold")
+            bg="#f0fdfa", fg=self.theme_teal, font=("Helvetica", 10, "bold")
         )
         self.lbl_banner.pack(side="left", padx=6)
-        btn_dismiss_banner = tk.Button(self.banner_frame, text="✕", bg="#ecfdf5", fg="#065f46", relief="flat",
-                                       font=("Helvetica", 9, "bold"), command=self.banner_frame.pack_forget)
+        btn_dismiss_banner = tk.Button(
+            self.banner_frame, text="✕", bg="#f0fdfa", fg=self.theme_teal, relief="flat",
+            font=("Helvetica", 9, "bold"), cursor="pointinghand", command=self.banner_frame.pack_forget
+        )
         btn_dismiss_banner.pack(side="right")
         self.banner_frame.pack(fill="x", padx=15, pady=(2, 4))
 
-        # Event Form
-        form_frame = ttk.LabelFrame(root, text=" Schedule New Event ", padding=10)
-        form_frame.pack(fill="x", padx=15, pady=4)
+        # -------------------------------------------------------------
+        # 3. Schedule New Event Form (Card Style)
+        # -------------------------------------------------------------
+        form_card = tk.LabelFrame(
+            root, text=" ✦ Schedule New Event ", font=("Helvetica", 10, "bold"),
+            bg="#ffffff", fg=self.theme_teal, padx=14, pady=10, relief="solid", bd=1,
+            highlightbackground="#cbd5e1", highlightthickness=1
+        )
+        form_card.pack(fill="x", padx=15, pady=4)
 
-        ttk.Label(form_frame, text="Title:").grid(row=0, column=0, sticky="w", padx=4, pady=3)
-        self.entry_title = ttk.Entry(form_frame, width=16)
-        self.entry_title.grid(row=0, column=1, sticky="w", padx=4, pady=3)
+        # Helper to create paired labels and entries tightly
+        def make_lbl(parent, text):
+            return tk.Label(parent, text=text, bg="#ffffff", fg=self.lbl_fg, font=("Helvetica", 9, "bold"))
 
-        ttk.Label(form_frame, text="Category:").grid(row=0, column=2, sticky="w", padx=4, pady=3)
-        self.combo_cat = ttk.Combobox(form_frame, width=12, state="readonly")
-        self.combo_cat.grid(row=0, column=3, sticky="w", padx=4, pady=3)
+        # Row 0: Basic Details
+        row0 = tk.Frame(form_card, bg="#ffffff")
+        row0.pack(fill="x", pady=(0, 6))
 
-        btn_new_cat = ttk.Button(form_frame, text="+ Cat", width=6, command=self.open_add_category_dialog)
-        btn_new_cat.grid(row=0, column=4, padx=4, pady=3)
+        make_lbl(row0, "Title:").pack(side="left", padx=(0, 3))
+        self.entry_title = ttk.Entry(row0, width=16)
+        self.entry_title.pack(side="left", padx=(0, 14))
 
-        ttk.Label(form_frame, text="Start Date:").grid(row=0, column=5, sticky="w", padx=4, pady=3)
-        self.entry_date = ttk.Entry(form_frame, width=11)
+        make_lbl(row0, "Category:").pack(side="left", padx=(0, 3))
+        self.combo_cat = ttk.Combobox(row0, width=11, state="readonly")
+        self.combo_cat.pack(side="left", padx=(0, 4))
+
+        btn_new_cat = ttk.Button(row0, text="+ Cat", width=5, command=self.open_add_category_dialog)
+        btn_new_cat.pack(side="left", padx=(0, 14))
+
+        make_lbl(row0, "Start Date:").pack(side="left", padx=(0, 3))
+        self.entry_date = ttk.Entry(row0, width=11)
         self.entry_date.insert(0, str(self.current_date))
-        self.entry_date.grid(row=0, column=6, sticky="w", padx=4, pady=3)
+        self.entry_date.pack(side="left", padx=(0, 10))
 
         self.is_multiday = tk.BooleanVar(value=False)
-        chk_multiday = ttk.Checkbutton(form_frame, text="Multi-day Span", variable=self.is_multiday, command=self.toggle_multiday_ui)
-        chk_multiday.grid(row=0, column=7, padx=(8, 2), sticky="w")
+        chk_multiday = ttk.Checkbutton(row0, text="Multi-day Span", variable=self.is_multiday, command=self.toggle_multiday_ui)
+        chk_multiday.pack(side="left", padx=(0, 6))
 
-        ttk.Label(form_frame, text="End Date:").grid(row=0, column=8, sticky="w", padx=4, pady=3)
-        self.entry_end_date = ttk.Entry(form_frame, width=11, state="disabled")
+        make_lbl(row0, "End Date:").pack(side="left", padx=(0, 3))
+        self.entry_end_date = ttk.Entry(row0, width=11, state="disabled")
         self.entry_end_date.insert(0, str(self.current_date + timedelta(days=2)))
-        self.entry_end_date.grid(row=0, column=9, sticky="w", padx=4, pady=3)
+        self.entry_end_date.pack(side="left")
 
-        # Row 1: Time, Duration, Buffer, Reminder, and Schedule Button
-        ttk.Label(form_frame, text="Start (HH:MM):").grid(row=1, column=0, sticky="w", padx=4, pady=3)
-        self.entry_time = ttk.Entry(form_frame, width=10)
+        # Row 1: Time, Durations, Alert & Submit Button
+        row1 = tk.Frame(form_card, bg="#ffffff")
+        row1.pack(fill="x", pady=(0, 6))
+
+        make_lbl(row1, "Start (HH:MM):").pack(side="left", padx=(0, 3))
+        self.entry_time = ttk.Entry(row1, width=8)
         self.entry_time.insert(0, "14:00")
-        self.entry_time.grid(row=1, column=1, sticky="w", padx=4, pady=3)
+        self.entry_time.pack(side="left", padx=(0, 12))
 
-        ttk.Label(form_frame, text="Duration (min):").grid(row=1, column=2, sticky="w", padx=4, pady=3)
-        self.entry_dur = ttk.Entry(form_frame, width=8)
+        make_lbl(row1, "Duration (m):").pack(side="left", padx=(0, 3))
+        self.entry_dur = ttk.Entry(row1, width=5)
         self.entry_dur.insert(0, "60")
-        self.entry_dur.grid(row=1, column=3, sticky="w", padx=4, pady=3)
+        self.entry_dur.pack(side="left", padx=(0, 12))
 
-        ttk.Label(form_frame, text="Buffer (min):").grid(row=1, column=4, sticky="w", padx=4, pady=3)
-        self.entry_buf = ttk.Entry(form_frame, width=6)
-        self.entry_buf.insert(0, "15")
-        self.entry_buf.grid(row=1, column=5, sticky="w", padx=4, pady=3)
+        make_lbl(row1, "Buffer (m):").pack(side="left", padx=(0, 3))
+        self.entry_buf = ttk.Entry(row1, width=5)
+        self.entry_buf.insert(0, "0")
+        self.entry_buf.pack(side="left", padx=(0, 12))
 
-        ttk.Label(form_frame, text="Reminder:").grid(row=1, column=6, sticky="w", padx=(8, 4), pady=3)
+        make_lbl(row1, "Alert:").pack(side="left", padx=(0, 3))
         self.combo_reminder = ttk.Combobox(
-            form_frame,
-            values=["None", "15 min before", "30 min before", "1 hour before"],
-            width=13,
-            state="readonly"
+            row1, values=["None", "15 min before", "30 min before", "1 hour before"],
+            width=12, state="readonly"
         )
         self.combo_reminder.current(0)
-        self.combo_reminder.grid(row=1, column=7, sticky="w", padx=4, pady=3)
+        self.combo_reminder.pack(side="left", padx=(0, 14))
 
-        btn_submit = ttk.Button(form_frame, text="Schedule Event", command=self.add_event)
-        btn_submit.grid(row=1, column=8, columnspan=2, sticky="ew", padx=(10, 4), pady=3)
-        rec_frame = tk.Frame(form_frame, bg="#ffffff", padx=8, pady=4, relief="groove", bd=1)
-        rec_frame.grid(row=2, column=0, columnspan=10, sticky="ew", pady=(4, 2))
+        btn_submit = tk.Button(
+            row1, text="＋ Schedule Event", command=self.add_event,
+            bg=self.theme_teal_btn, fg="black", font=("Helvetica", 9, "bold"),
+            relief="raised", bd=1, padx=12, pady=3, cursor="pointinghand"
+        )
+        btn_submit.pack(side="right", fill="x", expand=True, padx=(8, 0))
 
+        # Row 2: Recurrence Options (Soft Mint & Deep Teal Theme)
+        rec_frame = tk.Frame(
+            form_card, bg="#f0fdf4", padx=10, pady=5,
+            relief="solid", bd=1, highlightbackground="#bbf7d0"
+        )
+        rec_frame.pack(fill="x", pady=(4, 0))
+        # אתחול משתני החזרתיות של הטופס
         self.is_recurring = tk.BooleanVar(value=False)
-        chk_rec = ttk.Checkbutton(rec_frame, text="Repeating Event", variable=self.is_recurring, command=self.toggle_recurrence_ui)
-        chk_rec.grid(row=0, column=0, sticky="w", padx=4)
+        tk.Checkbutton(
+            rec_frame, text="Repeating Event", variable=self.is_recurring,
+            command=self.toggle_recurrence_ui, bg="#f0fdf4", fg="#065f46",
+            activebackground="#f0fdf4", activeforeground="#065f46",
+            selectcolor="#ffffff", font=("Helvetica", 9, "bold")
+        ).pack(side="left", padx=(0, 10))
 
-        ttk.Label(rec_frame, text="Frequency:").grid(row=0, column=1, padx=(6, 2))
-        self.combo_freq = ttk.Combobox(rec_frame, values=["Weekly", "Monthly", "Yearly"], width=9, state="disabled")
+        tk.Label(
+            rec_frame, text="Frequency:", bg="#f0fdf4", fg="#065f46",
+            font=("Helvetica", 9, "bold")
+        ).pack(side="left", padx=(0, 3))
+
+        self.combo_freq = ttk.Combobox(
+            rec_frame, values=["Weekly", "Monthly", "Yearly"],
+            width=9, state="disabled"
+        )
         self.combo_freq.current(0)
-        self.combo_freq.grid(row=0, column=2, padx=4)
+        self.combo_freq.pack(side="left", padx=(0, 12))
         self.combo_freq.bind("<<ComboboxSelected>>", self.on_freq_change)
+
         self.days_vars = {}
         day_labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-        days_box = tk.Frame(rec_frame, bg="#ffffff")
-        days_box.grid(row=0, column=3, padx=(10, 4))
+        days_box = tk.Frame(rec_frame, bg="#f0fdf4")
+        days_box.pack(side="left", padx=(4, 0))
         for lbl in day_labels:
             var = tk.BooleanVar(value=False)
-            chk = ttk.Checkbutton(days_box, text=lbl, variable=var, state="disabled")
+            chk = tk.Checkbutton(
+                days_box, text=lbl, variable=var, state="disabled",
+                bg="#f0fdf4", fg="#065f46", activebackground="#f0fdf4",
+                selectcolor="#ffffff", font=("Helvetica", 9)
+            )
             chk.pack(side="left", padx=2)
             self.days_vars[lbl] = (var, chk)
-
-        # Navigation
-        nav_bar = tk.Frame(root, bg=self.bg_dashboard, padx=15, pady=4)
+        # -------------------------------------------------------------
+        # Navigation Bar (Calm Teal & Sage Theme)
+        # -------------------------------------------------------------
+        nav_bar = tk.Frame(root, bg=self.bg_dashboard, padx=15, pady=6)
         nav_bar.pack(fill="x")
 
-        tk.Label(nav_bar, text="View:", font=("Helvetica", 10, "bold"), bg=self.bg_dashboard).pack(side="left", padx=(0, 4))
-        ttk.Radiobutton(nav_bar, text="Weekly View", variable=self.active_view, value="Week", command=self.switch_view).pack(side="left", padx=4)
-        ttk.Radiobutton(nav_bar, text="Day View", variable=self.active_view, value="Day", command=self.switch_view).pack(side="left", padx=(0, 15))
+        # Color Constants
+        c_nav_lbl = "#0f4c5c"      # טורקיז-פטרול כהה וקריא
+        c_nav_active = "#134e4a"   # ירוק-טורקיז עמוק לטקסט
+        c_btn_bg = "#ffffff"       # רקע כפתור נקי
+        c_btn_border = "#99f6e4"   # מסגרת מנטה רכה
 
-        tk.Label(nav_bar, text="Step:", font=("Helvetica", 10, "bold"), bg=self.bg_dashboard).pack(side="left", padx=(0, 4))
+        # View Selector
+        tk.Label(
+            nav_bar, text="View:", font=("Helvetica", 10, "bold"),
+            bg=self.bg_dashboard, fg=c_nav_lbl
+        ).pack(side="left", padx=(0, 4))
+
+        tk.Radiobutton(
+            nav_bar, text="Weekly View", variable=self.active_view, value="Week",
+            command=self.switch_view, bg=self.bg_dashboard, fg=c_nav_active,
+            activebackground=self.bg_dashboard, activeforeground=c_nav_active,
+            selectcolor="#ccfbf1", font=("Helvetica", 9, "bold")
+        ).pack(side="left", padx=4)
+
+        tk.Radiobutton(
+            nav_bar, text="Day View", variable=self.active_view, value="Day",
+            command=self.switch_view, bg=self.bg_dashboard, fg=c_nav_active,
+            activebackground=self.bg_dashboard, activeforeground=c_nav_active,
+            selectcolor="#ccfbf1", font=("Helvetica", 9, "bold")
+        ).pack(side="left", padx=(0, 16))
+
+        # Step Selector
+        tk.Label(
+            nav_bar, text="Step:", font=("Helvetica", 10, "bold"),
+            bg=self.bg_dashboard, fg=c_nav_lbl
+        ).pack(side="left", padx=(0, 4))
+
         self.nav_step = tk.StringVar(value="Standard")
-        ttk.Combobox(nav_bar, values=["Standard", "Month", "Year"], textvariable=self.nav_step, width=9, state="readonly").pack(side="left", padx=(0, 10))
+        self.combo_step = ttk.Combobox(
+            nav_bar, values=["Standard", "Month", "Year"],
+            textvariable=self.nav_step, width=9, state="readonly"
+        )
+        self.combo_step.pack(side="left", padx=(0, 14))
 
-        tk.Button(nav_bar, text="◀ Previous", font=("Helvetica", 10, "bold"), bg="#ffffff", command=lambda: self.navigate_time(-1)).pack(side="left", padx=3)
-        tk.Button(nav_bar, text="Today", font=("Helvetica", 10, "bold"), bg="#e2e8f0", command=self.navigate_today).pack(side="left", padx=3)
-        tk.Button(nav_bar, text="Next ▶", font=("Helvetica", 10, "bold"), bg="#ffffff", command=lambda: self.navigate_time(1)).pack(side="left", padx=3)
+        # Navigation Buttons (Previous, Today, Next)
+        def create_nav_btn(text, cmd, bg_color="#ffffff", fg_color="#0f4c5c"):
+            return tk.Button(
+                nav_bar, text=text, font=("Helvetica", 9, "bold"),
+                bg=bg_color, fg=fg_color, activebackground="#e6fffa",
+                relief="solid", bd=1, highlightbackground=c_btn_border,
+                padx=10, pady=2, cursor="pointinghand", command=cmd
+            )
 
-        self.lbl_current_range = tk.Label(nav_bar, text="", font=("Helvetica", 12, "bold"), bg=self.bg_dashboard, fg="#2c5282")
+        create_nav_btn("◀ Previous", lambda: self.navigate_time(-1)).pack(side="left", padx=3)
+        create_nav_btn("Today", self.navigate_today, bg_color="#e6fffa", fg_color="#065f46").pack(side="left", padx=3)
+        create_nav_btn("Next ▶", lambda: self.navigate_time(1)).pack(side="left", padx=3)
+
+        self.lbl_current_range = tk.Label(
+            nav_bar, text="", font=("Helvetica", 11, "bold"),
+            bg=self.bg_dashboard, fg="#0f4c5c"
+        )
         self.lbl_current_range.pack(side="right")
 
-        # Timetable
-        calendar_frame = ttk.LabelFrame(root, text=" Calendar Timetable (Hover for details, click to Edit/Delete) ", padding=6)
-        calendar_frame.pack(fill="both", expand=True, padx=15, pady=4)
+        # -------------------------------------------------------------
+        # 5. Timetable Grid Scrollable Canvas Container
+        # -------------------------------------------------------------
+        table_outer_frame = tk.Frame(self.root, bg=self.bg_dashboard)
+        table_outer_frame.pack(fill="both", expand=True, padx=15, pady=(4, 10))
 
-        canvas = tk.Canvas(calendar_frame, bg="#ffffff")
-        scrollbar = ttk.Scrollbar(calendar_frame, orient="vertical", command=canvas.yview)
-        self.grid_container = tk.Frame(canvas, bg="#ffffff")
-        self.grid_container.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=self.grid_container, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side="left", fill="both", expand=True)
+        self.canvas = tk.Canvas(table_outer_frame, bg=self.bg_dashboard, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(table_outer_frame, orient="vertical", command=self.canvas.yview)
+
+        self.grid_container = tk.Frame(self.canvas, bg=self.bg_dashboard)
+        self.grid_container.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+
+        self.canvas.create_window((0, 0), window=self.grid_container, anchor="nw")
+        self.canvas.configure(yscrollcommand=scrollbar.set)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        self.start_hour = 7
-        self.end_hour = 23
-        self.hour_height_px = 64  # Precise pixel height per hour
-
-        self.update_category_combobox()
+        # -------------------------------------------------------------
+        # 6. Lifecycle Startup (Load Profile -> Render -> Run Background Daemons)
+        # -------------------------------------------------------------
         self.check_initial_profile()
         self.render_grid()
 
-        # Check-in prompt timer (simulating mindful ping)
-        self.root.after(3000, self._trigger_mindful_popup)
-        self._start_reminder_daemon()
+        # Start Background Daemons
         self._auto_refresh_time_indicator()
-    
+        self._start_reminder_daemon()
+        self.root.after(3000, self._trigger_mindful_popup)
+
     def _play_alert_sound(self):
         """Plays a gentle native macOS alert sound."""
         import subprocess
@@ -726,7 +984,6 @@ class ScheduleApp:
 
     def _show_reminder_popup(self, title: str, minutes_left: int, buf: int):
         """Displays a clean floating alert window, preventing duplicate popups."""
-        # אם כבר יש חלון התראה פתוח על המסך, לא פותחים עוד אחד מעליו
         if hasattr(self, "_active_reminder_popup") and self._active_reminder_popup is not None:
             try:
                 if self._active_reminder_popup.winfo_exists():
@@ -772,7 +1029,7 @@ class ScheduleApp:
         )
         btn.pack(pady=(10, 0))
         popup.protocol("WM_DELETE_WINDOW", _on_close)
-
+        
     def _start_reminder_daemon(self):
         """Periodically checks and alerts for events and recurring routines."""
         import math
@@ -787,7 +1044,7 @@ class ScheduleApp:
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # 1. Check one-time / recurring events
+                # 1. בדיקת אירועים רגילים / אירועים שהופרדו
                 cursor.execute("""
                     SELECT id, title, event_date, start_clock, buffer_before_minutes, reminder_min 
                     FROM events 
@@ -804,7 +1061,8 @@ class ScheduleApp:
                         disp_min = max(1, math.ceil(diff_minutes))
                         self._show_reminder_popup(title, disp_min, buf)
 
-                # 2. Check Core Habits / Routines active today
+                # 2. בדיקת רוטינות קבועות הפעילות היום (עם סינון החרגות)
+                exclusions = self.db.get_routine_exclusions()
                 cursor.execute("""
                     SELECT id, title, start_clock, buffer_before_minutes, reminder_min
                     FROM user_routines
@@ -812,11 +1070,15 @@ class ScheduleApp:
                 """, (today_weekday,))
                 for row in cursor.fetchall():
                     r_id, r_title, r_clock_str, r_buf, r_rem_min = row
+                    
+                    # אם ההרגל הוחרג/הוזז היום - לא מתריעים על המופע הקבוע
+                    if (r_id, today_date.isoformat()) in exclusions:
+                        continue
+
                     t_parts = [int(p) for p in r_clock_str.split(":")]
                     r_start = datetime.combine(today_date, time(t_parts[0], t_parts[1]))
                     diff_minutes = (r_start - now).total_seconds() / 60.0
 
-                    # Use daily unique key so it alerts once per day
                     r_key = f"routine_{r_id}_{today_date.isoformat()}"
                     if -0.5 <= diff_minutes <= (float(r_rem_min) + 0.5) and r_key not in self._notified_events:
                         self._notified_events.add(r_key)
@@ -826,6 +1088,7 @@ class ScheduleApp:
         except Exception as err:
             print(f">>> Reminder Daemon Error: {err}")
 
+        # בדיקה חוזרת כל 10 שניות
         self.root.after(10000, self._start_reminder_daemon)
 
     def _trigger_mindful_popup(self):
@@ -895,20 +1158,34 @@ class ScheduleApp:
                 self.current_week_start += timedelta(days=364 * direction)
         self.render_grid()
 
+    def _apply_user_profile_hours(self):
+        """Loads user profile and sets dynamic start/end hours for the timetable."""
+        user = self.db.load_user_profile()
+        if user:
+            self.lbl_welcome.configure(text=f"Welcome back, {user.full_name}")
+            self.start_hour = user.wake_time.hour
+            self.end_hour = user.sleep_time.hour
+
+            # Safety fallback in case end hour is earlier than or equal to start hour
+            if self.end_hour <= self.start_hour:
+                self.end_hour = 23
+
     def check_initial_profile(self):
         user = self.db.load_user_profile()
         if not user:
             self.open_onboarding()
         else:
-            self.lbl_welcome.configure(text=f"Welcome back, {user.full_name}")
+            self._apply_user_profile_hours()
 
     def open_onboarding(self):
-        dialog = OnboardingDialog(self.root, self.db, on_complete_callback=self.render_grid)
-        self.root.wait_window(dialog)
-        user = self.db.load_user_profile()
-        if user:
-            self.lbl_welcome.configure(text=f"Welcome back, {user.full_name}")
+        def _on_profile_saved():
+            self._apply_user_profile_hours()
             self.render_grid()
+
+        dialog = OnboardingDialog(self.root, self.db, on_complete_callback=_on_profile_saved)
+        self.root.wait_window(dialog)
+        self._apply_user_profile_hours()
+        self.render_grid()
 
     def load_categories_from_db(self):
         records = self.db.get_categories()
@@ -1040,21 +1317,26 @@ class ScheduleApp:
                 cell_frame.grid_propagate(False)
                 cell_slots[(c_idx - 1, hour)] = cell_frame
 
-        # 1. Routines
+        # 1. Routines (with Exclusion check and Click-to-Edit support)
+        exclusions = self.db.get_routine_exclusions()
         _, routine_details = self.db.load_user_profile_with_colors()
         for r_info in routine_details:
             r = r_info["slot"]
             d = r.day_of_week
             color = r_info["color_hex"]
+            col_date = self.current_week_start + timedelta(days=d)
+
+            # Skip if this specific date is excluded
+            if (r_info["id"], col_date.isoformat()) in exclusions:
+                continue
 
             event_start_min = r.start_clock.hour * 60 + r.start_clock.minute
             event_end_min = event_start_min + r.duration_minutes
-            details = f"📌 {r.title}\nTime: {r.start_clock.strftime('%H:%M')} ({r.duration_minutes} min)\nCategory: {r.category}"
+            details = f"📌 {r.title}\nTime: {r.start_clock.strftime('%H:%M')} ({r.duration_minutes} min)\nCategory: {r.category}\n(Click to edit or skip this day)"
 
             for h in range(self.start_hour, self.end_hour + 1):
                 slot_start = h * 60
                 slot_end = (h + 1) * 60
-                # Overlap in this specific hour
                 ov_start = max(event_start_min, slot_start)
                 ov_end = min(event_end_min, slot_end)
                 if ov_start < ov_end:
@@ -1062,8 +1344,10 @@ class ScheduleApp:
                     dur_in_h = ov_end - ov_start
                     txt = f"📌 {r.title}" if ov_start == event_start_min else f"↓ {r.title}"
                     if (d, h) in cell_slots:
-                        self._render_time_slice(cell_slots[(d, h)], start_in_h, dur_in_h, color, txt, details)
-
+                        self._render_time_slice(
+                            cell_slots[(d, h)], start_in_h, dur_in_h, color, txt, details,
+                            on_click=lambda r_item=r_info, cur_d=col_date: self.open_routine_action_dialog(r_item, cur_d)
+                        )
         # 2. Events with Multi-Hour Proportions, Buffers, and End-of-Month Recurring Logic
         day_tag_to_col = {"Sun": 0, "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6}
         with self.db.get_connection() as conn:
@@ -1216,22 +1500,32 @@ class ScheduleApp:
             cell_frame.grid_propagate(False)
             cell_slots[hour] = cell_frame
 
+        # 1. ציור רוטינות עם בדיקת החרגות ותמיכה בלחיצה לעריכה
         target_weekday = (self.current_date.weekday() + 1) % 7
+        exclusions = self.db.get_routine_exclusions()
         _, routine_details = self.db.load_user_profile_with_colors()
         for r_info in routine_details:
             r = r_info["slot"]
             if r.day_of_week == target_weekday:
+                # אם ההרגל הוחרג/הוזז בתאריך זה - לא מציירים את המופע הקבוע
+                if (r_info["id"], self.current_date.isoformat()) in exclusions:
+                    continue
+
                 event_start_min = r.start_clock.hour * 60 + r.start_clock.minute
                 event_end_min = event_start_min + r.duration_minutes
-                details = f"📌 {r.title}\nTime: {r.start_clock.strftime('%H:%M')} ({r.duration_minutes}m)"
+                details = f"📌 {r.title}\nTime: {r.start_clock.strftime('%H:%M')} ({r.duration_minutes}m)\n(Click to edit or skip this day)"
 
                 for h in range(self.start_hour, self.end_hour + 1):
                     s_h, e_h = h * 60, (h + 1) * 60
                     ov_s, ov_e = max(event_start_min, s_h), min(event_end_min, e_h)
                     if ov_s < ov_e:
                         txt = f"📌 {r.title}" if ov_s == event_start_min else f"↓ {r.title}"
-                        self._render_time_slice(cell_slots[h], ov_s - s_h, ov_e - ov_s, r_info["color_hex"], txt, details)
+                        self._render_time_slice(
+                            cell_slots[h], ov_s - s_h, ov_e - ov_s, r_info["color_hex"], txt, details,
+                            on_click=lambda r_item=r_info, cur_d=self.current_date: self.open_routine_action_dialog(r_item, cur_d)
+                        )
 
+        # 2. ציור אירועים רגילים / אירועים שהופרדו
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -1311,13 +1605,13 @@ class ScheduleApp:
                             s_h, e_h = h * 60, (h + 1) * 60
                             if max(b_s, s_h) < min(b_e, e_h):
                                 self._render_time_slice(cell_slots[h], max(b_s, s_h) - s_h, min(b_e, e_h) - max(b_s, s_h), "#f1f5f9", "⏳ Buffer", f"Buffer after ({buf_after}m)", is_buffer=True)
+
         # Draw Red Line Indicator for Current Time (Day View)
         now = datetime.now()
         if self.current_date == now.date():
             if self.start_hour <= now.hour <= self.end_hour:
                 if now.hour in cell_slots:
                     self._draw_current_time_indicator(cell_slots[now.hour], now.minute)
-
     def open_event_action_dialog(self, ev_data: dict):
         EventActionDialog(self, self.db, ev_data, on_update_callback=self.render_grid)
 
@@ -1492,7 +1786,7 @@ class ScheduleApp:
         self.entry_dur.insert(0, "60")
 
         self.entry_buf.delete(0, tk.END)
-        self.entry_buf.insert(0, "15")
+        self.entry_buf.insert(0, "0")
 
         if self.combo_cat["values"]:
             self.combo_cat.current(0)
@@ -1505,3 +1799,5 @@ class ScheduleApp:
         for var, chk in self.days_vars.values():
             var.set(False)
             chk.configure(state="disabled")
+    def open_routine_action_dialog(self, routine_data: dict, target_date: date):
+        RoutineActionDialog(self, self.db, routine_data, target_date, on_update_callback=self.render_grid)

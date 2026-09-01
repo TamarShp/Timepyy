@@ -88,6 +88,14 @@ class ScheduleDatabase:
                 CREATE INDEX IF NOT EXISTS idx_events_interval 
                 ON events (total_start_time, total_end_time);
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS routine_exclusions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    routine_id INTEGER NOT NULL,
+                    excluded_date TEXT NOT NULL,
+                    UNIQUE(routine_id, excluded_date)
+                );
+            """)
 
             # Ensure columns exist if upgrading existing databases
             try:
@@ -253,3 +261,19 @@ class ScheduleDatabase:
             ))
             conn.commit()
             print(f">>> DB UPDATED: Event {event_id} set reminder_min to {reminder_min}")
+    def add_routine_exclusion(self, routine_id: int, excluded_date_str: str) -> None:
+        """Records an exclusion so a routine does not appear on a specific date."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR IGNORE INTO routine_exclusions (routine_id, excluded_date)
+                VALUES (?, ?);
+            """, (routine_id, excluded_date_str))
+            conn.commit()
+
+    def get_routine_exclusions(self) -> set:
+        """Returns a set of (routine_id, excluded_date_str) tuples."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT routine_id, excluded_date FROM routine_exclusions;")
+            return set(cursor.fetchall())

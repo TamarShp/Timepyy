@@ -698,29 +698,38 @@ class ScheduleApp:
         self.bg_dashboard = "#edf2f7"
         self.root.configure(bg=self.bg_dashboard)
 
-        self.theme_teal = "#0f4c5c"       # כחול-טורקיז פטרול כהה ורגוע
-        self.theme_teal_btn = "#0284c7"   # טורקיז-כחול מודרני לכפתור פעולה
-        self.lbl_fg = "#164e63"           # צבע טקסט לתוויות
+        #bypassing native dark mode for entry fields and comboboxes on macOS
+        style = ttk.Style()
+        if "clam" in style.theme_names():
+            style.theme_use("clam")
+        #defining a custom style for ttk widgets to ensure consistent appearance across platforms
+        style.configure("TEntry", fieldbackground="#ffffff", foreground="#0f172a", bordercolor="#cbd5e1")
+        style.configure("TCombobox", fieldbackground="#ffffff", foreground="#0f172a", background="#f8fafc", bordercolor="#cbd5e1")
+        style.map("TCombobox", fieldbackground=[("readonly", "#ffffff")])
 
-        # 2. גבולות לוח הזמנים (ערכי ברירת מחדל עד לטעינת הפרופיל)
+        self.theme_teal = "#0f4c5c"       # blue-teal for headers and highlights
+        self.theme_teal_btn = "#0284c7"   # teal color for buttons
+        self.lbl_fg = "#164e63"           # color for labels
+
+        # 2. setttings for the schedule grid
         self.start_hour = 7
         self.end_hour = 23
         self.hour_height_px = 50
 
-        # 3. ניהול תאריכים ותצוגות
+        # 3. State variables for current date, week, and view
         self.current_date = date.today()
         sunday_offset = (self.current_date.weekday() + 1) % 7
         self.current_week_start = self.current_date - timedelta(days=sunday_offset)
         self.active_view = tk.StringVar(value="Week")
         self.nav_step = tk.StringVar(value="Standard")
 
-        # 4. משתני מצב לטפסים והתראות
+        # 4. State variables for forms and notifications
         self.mindful_enabled = tk.BooleanVar(value=True)
         self.is_recurring = tk.BooleanVar(value=False)
         self.is_multiday = tk.BooleanVar(value=False)
         self._notified_events = set()
 
-        # 5. טעינת קטגוריות
+        # 5. category colors loaded from the database
         self.category_colors = {}
         self.load_categories_from_db()
         # -------------------------------------------------------------
@@ -1004,7 +1013,7 @@ class ScheduleApp:
         popup = tk.Toplevel(self.root)
         self._active_reminder_popup = popup
         popup.title("Upcoming Reminder")
-        popup.geometry("360x180")
+        popup.geometry("380x190")  # Slightly wider for the updated text
         popup.resizable(False, False)
         popup.configure(bg="#1e293b")
         popup.attributes("-topmost", True)
@@ -1015,10 +1024,12 @@ class ScheduleApp:
             bg="#1e293b", fg="#38bdf8"
         ).pack(pady=(15, 6))
 
-        # Body
-        msg = f"'{title}' starts in {minutes_left} minutes!"
+        # Body - Updated for Buffer awareness
         if buf > 0:
-            msg += f"\n(Includes {buf}m prep/travel buffer)"
+            msg = f"Time to get ready! '{title}' starts in {minutes_left + buf} minutes."
+            msg += f"\n(Your {buf}m prep/travel buffer starts in {minutes_left} minutes)"
+        else:
+            msg = f"'{title}' starts in {minutes_left} minutes!"
 
         tk.Label(
             popup, text=msg, font=("Helvetica", 10),
@@ -1033,11 +1044,11 @@ class ScheduleApp:
         btn = tk.Button(
             popup, text="Got It", font=("Helvetica", 10, "bold"),
             bg="#38bdf8", fg="#0f172a", relief="flat", padx=16, pady=4,
-            cursor="hand2", command=_on_close
+            cursor="pointinghand", command=_on_close
         )
         btn.pack(pady=(10, 0))
         popup.protocol("WM_DELETE_WINDOW", _on_close)
-        
+
     def _start_reminder_daemon(self):
         """Periodically checks and alerts for events and recurring routines."""
         import math
@@ -1052,7 +1063,7 @@ class ScheduleApp:
             with self.db.get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # 1. בדיקת אירועים רגילים / אירועים שהופרדו
+                # 1. Events Check
                 cursor.execute("""
                     SELECT id, title, event_date, start_clock, buffer_before_minutes, reminder_min 
                     FROM events 
@@ -1061,15 +1072,19 @@ class ScheduleApp:
                 for row in cursor.fetchall():
                     ev_id, title, e_date_str, e_time_str, buf, rem_min = row
                     t_parts = [int(p) for p in e_time_str.split(":")]
+                    
                     ev_start = datetime.combine(date.fromisoformat(e_date_str), time(t_parts[0], t_parts[1]))
-                    diff_minutes = (ev_start - now).total_seconds() / 60.0
+                    
+                    # Deduct the buffer to get the true alert threshold
+                    effective_start = ev_start - timedelta(minutes=buf)
+                    diff_minutes = (effective_start - now).total_seconds() / 60.0
 
                     if -0.5 <= diff_minutes <= (float(rem_min) + 0.5) and f"ev_{ev_id}" not in self._notified_events:
                         self._notified_events.add(f"ev_{ev_id}")
                         disp_min = max(1, math.ceil(diff_minutes))
                         self._show_reminder_popup(title, disp_min, buf)
 
-                # 2. בדיקת רוטינות קבועות הפעילות היום (עם סינון החרגות)
+                # 2. Core Habits / Routines Check
                 exclusions = self.db.get_routine_exclusions()
                 cursor.execute("""
                     SELECT id, title, start_clock, buffer_before_minutes, reminder_min
@@ -1079,13 +1094,15 @@ class ScheduleApp:
                 for row in cursor.fetchall():
                     r_id, r_title, r_clock_str, r_buf, r_rem_min = row
                     
-                    # אם ההרגל הוחרג/הוזז היום - לא מתריעים על המופע הקבוע
                     if (r_id, today_date.isoformat()) in exclusions:
                         continue
 
                     t_parts = [int(p) for p in r_clock_str.split(":")]
                     r_start = datetime.combine(today_date, time(t_parts[0], t_parts[1]))
-                    diff_minutes = (r_start - now).total_seconds() / 60.0
+                    
+                    # Deduct the buffer to get the true alert threshold
+                    effective_start = r_start - timedelta(minutes=r_buf)
+                    diff_minutes = (effective_start - now).total_seconds() / 60.0
 
                     r_key = f"routine_{r_id}_{today_date.isoformat()}"
                     if -0.5 <= diff_minutes <= (float(r_rem_min) + 0.5) and r_key not in self._notified_events:
@@ -1096,7 +1113,6 @@ class ScheduleApp:
         except Exception as err:
             print(f">>> Reminder Daemon Error: {err}")
 
-        # בדיקה חוזרת כל 10 שניות
         self.root.after(10000, self._start_reminder_daemon)
 
     def _trigger_mindful_popup(self):

@@ -58,6 +58,7 @@ class ScheduleDatabase:
                     buffer_before_minutes INTEGER NOT NULL,
                     buffer_after_minutes INTEGER NOT NULL,
                     color_hex TEXT DEFAULT '#fef3c7',
+                    reminder_min INTEGER DEFAULT 0,
                     FOREIGN KEY (user_id) REFERENCES user_profile (id) ON DELETE CASCADE
                 );
             """)
@@ -78,7 +79,8 @@ class ScheduleDatabase:
                     location TEXT,
                     color_hex TEXT DEFAULT '#ffffff',
                     recurrence_freq TEXT DEFAULT 'None',
-                    recurrence_days TEXT DEFAULT ''
+                    recurrence_days TEXT DEFAULT '',
+                    reminder_min INTEGER DEFAULT 0
                 );
             """)
 
@@ -86,15 +88,22 @@ class ScheduleDatabase:
                 CREATE INDEX IF NOT EXISTS idx_events_interval 
                 ON events (total_start_time, total_end_time);
             """)
-            # Ensure reminder column exists in events table
-        try:
-            cursor.execute("ALTER TABLE events ADD COLUMN reminder_min INTEGER DEFAULT 0;")
-        except Exception:
-            pass  # Column already exists
+
+            # Ensure columns exist if upgrading existing databases
+            try:
+                cursor.execute("ALTER TABLE events ADD COLUMN reminder_min INTEGER DEFAULT 0;")
+            except Exception:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE user_routines ADD COLUMN reminder_min INTEGER DEFAULT 0;")
+            except Exception:
+                pass
+
             conn.commit()
 
     def load_user_profile_with_colors(self) -> Tuple[Optional[UserProfile], List[dict]]:
-        """Loads the registered user and recurring routines with their display colors."""
+        """Loads registered user and routines including reminder settings."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT id, full_name, wake_time, sleep_time FROM user_profile LIMIT 1;")
@@ -104,8 +113,8 @@ class ScheduleDatabase:
 
             user_id, name, wake_str, sleep_str = user_row
             cursor.execute("""
-                SELECT title, category, day_of_week, start_clock, 
-                       duration_minutes, buffer_before_minutes, buffer_after_minutes, color_hex
+                SELECT id, title, category, day_of_week, start_clock, 
+                       duration_minutes, buffer_before_minutes, buffer_after_minutes, color_hex, reminder_min
                 FROM user_routines WHERE user_id = ?;
             """, (user_id,))
             
@@ -115,14 +124,16 @@ class ScheduleDatabase:
 
             for r in raw_routines:
                 slot = RoutineSlot(
-                    title=r[0], category=r[1], day_of_week=r[2],
-                    start_clock=time.fromisoformat(r[3]), duration_minutes=r[4],
-                    buffer_before_minutes=r[5], buffer_after_minutes=r[6]
+                    title=r[1], category=r[2], day_of_week=r[3],
+                    start_clock=time.fromisoformat(r[4]), duration_minutes=r[5],
+                    buffer_before_minutes=r[6], buffer_after_minutes=r[7]
                 )
                 routines.append(slot)
                 routine_details.append({
+                    "id": r[0],
                     "slot": slot,
-                    "color_hex": r[7] or "#fef3c7"
+                    "color_hex": r[8] or "#fef3c7",
+                    "reminder_min": r[9] if len(r) > 9 and r[9] is not None else 0
                 })
 
             profile = UserProfile(
@@ -137,8 +148,11 @@ class ScheduleDatabase:
         profile, _ = self.load_user_profile_with_colors()
         return profile
 
-    def save_user_profile_with_colors(self, user: UserProfile, routine_colors: List[str]) -> int:
-        """Saves user profile and assigns individual colors to routine slots."""
+    def save_user_profile_with_colors(self, user: UserProfile, routine_colors: List[str], routine_reminders: List[int] = None) -> int:
+        """Saves user profile with individual colors and reminder configurations."""
+        if routine_reminders is None:
+            routine_reminders = [0] * len(user.routines)
+
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM user_routines;")
@@ -152,15 +166,16 @@ class ScheduleDatabase:
 
             for idx, r in enumerate(user.routines):
                 assigned_color = routine_colors[idx] if idx < len(routine_colors) else "#fef3c7"
+                assigned_rem = routine_reminders[idx] if idx < len(routine_reminders) else 0
                 cursor.execute("""
                     INSERT INTO user_routines (
                         user_id, title, category, day_of_week, start_clock,
-                        duration_minutes, buffer_before_minutes, buffer_after_minutes, color_hex
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        duration_minutes, buffer_before_minutes, buffer_after_minutes, color_hex, reminder_min
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """, (
                     user_id, r.title, r.category, r.day_of_week,
                     r.start_clock.isoformat(), r.duration_minutes,
-                    r.buffer_before_minutes, r.buffer_after_minutes, assigned_color
+                    r.buffer_before_minutes, r.buffer_after_minutes, assigned_color, assigned_rem
                 ))
             conn.commit()
             return user_id

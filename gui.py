@@ -1,3 +1,5 @@
+import subprocess
+import platform
 import tkinter as tk
 from tkinter import ttk, messagebox, colorchooser
 import calendar
@@ -76,13 +78,13 @@ class HabitRowItem:
 
         self.btn_color = tk.Button(
             form_line, text="Color", bg=self.color_var.get(), width=5, relief="groove",
-            font=("Helvetica", 8, "bold"), cursor="pointinghand", command=self._pick_color
+            font=("Helvetica", 8, "bold"), cursor="hand2", command=self._pick_color
         )
         self.btn_color.grid(row=0, column=8, sticky="w", padx=(0, 6))
 
         btn_del = tk.Button(
             form_line, text="✕", bg="#fee2e2", fg="#991b1b", font=("Helvetica", 9, "bold"),
-            relief="flat", width=3, cursor="pointinghand", command=lambda: self.on_delete_callback(self)
+            relief="flat", width=3, cursor="hand2", command=lambda: self.on_delete_callback(self)
         )
         btn_del.grid(row=0, column=9, sticky="e")
         form_line.columnconfigure(9, weight=1)
@@ -221,7 +223,7 @@ class OnboardingDialog(tk.Toplevel):
         btn_add_habit = tk.Button(
             self.habits_frame_box, text="➕ Add Another Habit / Routine",
             font=("Helvetica", 10, "bold"), bg="#f1f5f9", fg="#2b6cb0",
-            relief="groove", padx=10, pady=5, cursor="pointinghand", command=lambda: self._add_habit_row()
+            relief="groove", padx=10, pady=5, cursor="hand2", command=lambda: self._add_habit_row()
         )
         btn_add_habit.pack(anchor="w", pady=(8, 2))
 
@@ -232,7 +234,7 @@ class OnboardingDialog(tk.Toplevel):
         btn_finish = tk.Button(
             bottom_bar, text="Lock in Habits & Open Planner", command=self._save_profile,
             font=("Helvetica", 11, "bold"), bg=self.accent_color, fg="black",
-            padx=20, pady=8, relief="raised", bd=1, cursor="pointinghand"
+            padx=20, pady=8, relief="raised", bd=1, cursor="hand2"
         )
         btn_finish.pack()
 
@@ -460,14 +462,14 @@ class EventActionDialog(tk.Toplevel):
         btn_save = tk.Button(
             btn_frame, text="Save Changes", bg="#2563eb", fg="black",
             highlightbackground="#2563eb", font=("Helvetica", 10, "bold"),
-            padx=14, pady=7, cursor="pointinghand", command=self._save_changes
+            padx=14, pady=7, cursor="hand2", command=self._save_changes
         )
         btn_save.pack(side="left", expand=True, padx=6)
 
         btn_delete = tk.Button(
             btn_frame, text="Delete Event", bg="#dc2626", fg="red",
             highlightbackground="#dc2626", font=("Helvetica", 10, "bold"),
-            padx=14, pady=7, cursor="pointinghand", command=self._delete_event
+            padx=14, pady=7, cursor="hand2", command=self._delete_event
         )
         btn_delete.pack(side="right", expand=True, padx=6)
 
@@ -617,14 +619,14 @@ class RoutineActionDialog(tk.Toplevel):
 
         btn_save_single = tk.Button(
             btn_frame, text="Save for This Day Only", bg="#2563eb", fg="black",
-            font=("Helvetica", 10, "bold"), padx=10, pady=7, cursor="pointinghand",
+            font=("Helvetica", 10, "bold"), padx=10, pady=7, cursor="hand2",
             command=self._save_this_day_only
         )
         btn_save_single.pack(fill="x", pady=3)
 
         btn_delete_single = tk.Button(
             btn_frame, text="Skip / Delete This Day Only", bg="#fee2e2", fg="#991b1b",
-            font=("Helvetica", 10, "bold"), padx=10, pady=7, cursor="pointinghand",
+            font=("Helvetica", 10, "bold"), padx=10, pady=7, cursor="hand2",
             command=self._delete_this_day_only
         )
         btn_delete_single.pack(fill="x", pady=3)
@@ -754,7 +756,7 @@ class ScheduleApp:
         self.lbl_banner.pack(side="left", padx=6)
         btn_dismiss_banner = tk.Button(
             self.banner_frame, text="✕", bg="#f0fdfa", fg=self.theme_teal, relief="flat",
-            font=("Helvetica", 9, "bold"), cursor="pointinghand", command=self.banner_frame.pack_forget
+            font=("Helvetica", 9, "bold"), cursor="hand2", command=self.banner_frame.pack_forget
         )
         btn_dismiss_banner.pack(side="right")
         self.banner_frame.pack(fill="x", padx=15, pady=(2, 4))
@@ -832,7 +834,7 @@ class ScheduleApp:
         btn_submit = tk.Button(
             row1, text="＋ Schedule Event", command=self.add_event,
             bg=self.theme_teal_btn, fg="black", font=("Helvetica", 9, "bold"),
-            relief="raised", bd=1, padx=12, pady=3, cursor="pointinghand"
+            relief="raised", bd=1, padx=12, pady=3, cursor="hand2"
         )
         btn_submit.pack(side="right", fill="x", expand=True, padx=(8, 0))
 
@@ -928,7 +930,7 @@ class ScheduleApp:
                 nav_bar, text=text, font=("Helvetica", 9, "bold"),
                 bg=bg_color, fg=fg_color, activebackground="#e6fffa",
                 relief="solid", bd=1, highlightbackground=c_btn_border,
-                padx=10, pady=2, cursor="pointinghand", command=cmd
+                padx=10, pady=2, cursor="hand2", command=cmd
             )
 
         create_nav_btn("◀ Previous", lambda: self.navigate_time(-1)).pack(side="left", padx=3)
@@ -973,12 +975,18 @@ class ScheduleApp:
         self._start_reminder_daemon()
         self.root.after(3000, self._trigger_mindful_popup)
 
+
     def _play_alert_sound(self):
-        """Plays a gentle native macOS alert sound."""
-        import subprocess
+        """Plays a cross-platform alert sound for reminders."""
         try:
-            # Plays the built-in system chime without needing any permissions
-            subprocess.Popen(["afplay", "/System/Library/Sounds/Glass.aiff"])
+            system_name = platform.system()
+            if system_name == "Darwin":  # macOS
+                subprocess.Popen(["afplay", "/System/Library/Sounds/Glass.aiff"])
+            elif system_name == "Windows":  # Windows
+                import winsound
+                winsound.MessageBeep(winsound.MB_ICONINFORMATION)
+            else:  # Linux / Others
+                print("\a", flush=True)  # Terminal bell fallback
         except Exception:
             pass
 
@@ -1025,7 +1033,7 @@ class ScheduleApp:
         btn = tk.Button(
             popup, text="Got It", font=("Helvetica", 10, "bold"),
             bg="#38bdf8", fg="#0f172a", relief="flat", padx=16, pady=4,
-            cursor="pointinghand", command=_on_close
+            cursor="hand2", command=_on_close
         )
         btn.pack(pady=(10, 0))
         popup.protocol("WM_DELETE_WINDOW", _on_close)
@@ -1264,8 +1272,8 @@ class ScheduleApp:
         ToolTip(lbl, lambda: full_details)
 
         if on_click:
-            sub_frame.configure(cursor="pointinghand")
-            lbl.configure(cursor="pointinghand")
+            sub_frame.configure(cursor="hand2")
+            lbl.configure(cursor="hand2")
             sub_frame.bind("<Button-1>", lambda e: on_click())
             lbl.bind("<Button-1>", lambda e: on_click())
     def _draw_current_time_indicator(self, parent_cell: tk.Frame, current_min: int):

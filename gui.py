@@ -38,11 +38,11 @@ class ToolTip:
             self.tip_window.destroy()
             self.tip_window = None
 
-
 class HabitRowItem:
-    def __init__(self, parent_frame: tk.Frame, on_delete_callback, default_name="", default_time="18:00", default_dur="60", default_color="#bbf7d0", initial_days=None):
+    def __init__(self, parent_frame: tk.Frame, on_delete_callback, default_name="", default_time="18:00", default_dur="60", default_color="#bbf7d0", initial_days=None, default_reminder="None"):
         self.on_delete_callback = on_delete_callback
         self.color_var = tk.StringVar(value=default_color)
+        self.reminder_var = tk.StringVar(value=default_reminder)
 
         self.row_card = tk.Frame(parent_frame, bg="#ffffff", padx=12, pady=10, relief="solid", bd=1, highlightbackground="#cbd5e1", highlightthickness=1)
         self.row_card.pack(fill="x", pady=6)
@@ -50,34 +50,42 @@ class HabitRowItem:
         form_line = tk.Frame(self.row_card, bg="#ffffff")
         form_line.pack(fill="x", pady=(0, 6))
 
-        tk.Label(form_line, text="Activity Name:", bg="#ffffff", fg="#1e293b", font=("Helvetica", 9, "bold")).grid(row=0, column=0, sticky="w", padx=(0, 4))
-        self.entry_name = ttk.Entry(form_line, width=16)
+        tk.Label(form_line, text="Activity:", bg="#ffffff", fg="#1e293b", font=("Helvetica", 9, "bold")).grid(row=0, column=0, sticky="w", padx=(0, 4))
+        self.entry_name = ttk.Entry(form_line, width=14)
         if default_name:
             self.entry_name.insert(0, default_name)
-        self.entry_name.grid(row=0, column=1, sticky="w", padx=(0, 8))
+        self.entry_name.grid(row=0, column=1, sticky="w", padx=(0, 6))
 
         tk.Label(form_line, text="Time:", bg="#ffffff", fg="#1e293b", font=("Helvetica", 9, "bold")).grid(row=0, column=2, sticky="w", padx=(0, 4))
-        self.entry_time = ttk.Entry(form_line, width=7)
+        self.entry_time = ttk.Entry(form_line, width=6)
         self.entry_time.insert(0, default_time)
-        self.entry_time.grid(row=0, column=3, sticky="w", padx=(0, 8))
+        self.entry_time.grid(row=0, column=3, sticky="w", padx=(0, 6))
 
         tk.Label(form_line, text="Min:", bg="#ffffff", fg="#1e293b", font=("Helvetica", 9, "bold")).grid(row=0, column=4, sticky="w", padx=(0, 4))
-        self.entry_dur = ttk.Entry(form_line, width=5)
+        self.entry_dur = ttk.Entry(form_line, width=4)
         self.entry_dur.insert(0, str(default_dur))
-        self.entry_dur.grid(row=0, column=5, sticky="w", padx=(0, 8))
+        self.entry_dur.grid(row=0, column=5, sticky="w", padx=(0, 6))
+
+        tk.Label(form_line, text="Alert:", bg="#ffffff", fg="#1e293b", font=("Helvetica", 9, "bold")).grid(row=0, column=6, sticky="w", padx=(0, 4))
+        self.combo_rem = ttk.Combobox(
+            form_line, textvariable=self.reminder_var,
+            values=["None", "15 min before", "30 min before", "1 hour before"],
+            width=11, state="readonly"
+        )
+        self.combo_rem.grid(row=0, column=7, sticky="w", padx=(0, 6))
 
         self.btn_color = tk.Button(
-            form_line, text="Color", bg=self.color_var.get(), width=6, relief="groove",
+            form_line, text="Color", bg=self.color_var.get(), width=5, relief="groove",
             font=("Helvetica", 8, "bold"), cursor="pointinghand", command=self._pick_color
         )
-        self.btn_color.grid(row=0, column=6, sticky="w", padx=(0, 8))
+        self.btn_color.grid(row=0, column=8, sticky="w", padx=(0, 6))
 
         btn_del = tk.Button(
             form_line, text="✕", bg="#fee2e2", fg="#991b1b", font=("Helvetica", 9, "bold"),
             relief="flat", width=3, cursor="pointinghand", command=lambda: self.on_delete_callback(self)
         )
-        btn_del.grid(row=0, column=7, sticky="e")
-        form_line.columnconfigure(7, weight=1)
+        btn_del.grid(row=0, column=9, sticky="e")
+        form_line.columnconfigure(9, weight=1)
 
         days_line = tk.Frame(self.row_card, bg="#ffffff")
         days_line.pack(fill="x")
@@ -103,7 +111,6 @@ class HabitRowItem:
 
     def destroy(self):
         self.row_card.destroy()
-
 
 class OnboardingDialog(tk.Toplevel):
     def __init__(self, parent: tk.Tk, db: ScheduleDatabase, on_complete_callback=None):
@@ -193,6 +200,15 @@ class OnboardingDialog(tk.Toplevel):
         tk.Label(meal_box, text="Duration (min):", bg=self.bg_card, fg="#1e293b", font=("Helvetica", 9, "bold")).grid(row=1, column=2, sticky="w", padx=(14, 4), pady=4)
         self.entry_lunch_dur = ttk.Entry(meal_box, width=8)
         self.entry_lunch_dur.grid(row=1, column=3, sticky="w", padx=4, pady=4)
+        # Lunch reminder combo
+        tk.Label(meal_box, text="Alert:", bg=self.bg_card, fg="#1e293b", font=("Helvetica", 9, "bold")).grid(row=1, column=4, sticky="w", padx=(10, 4), pady=4)
+        self.lunch_rem_var = tk.StringVar(value="None")
+        self.combo_lunch_rem = ttk.Combobox(
+            meal_box, textvariable=self.lunch_rem_var,
+            values=["None", "15 min before", "30 min before", "1 hour before"],
+            width=11, state="readonly"
+        )
+        self.combo_lunch_rem.grid(row=1, column=5, sticky="w", padx=4, pady=4)
 
         # Habits
         self.habits_frame_box = tk.LabelFrame(scroll_content, text=" Recurring Activities & Routines ", font=("Helvetica", 11, "bold"),
@@ -221,51 +237,51 @@ class OnboardingDialog(tk.Toplevel):
         btn_finish.pack()
 
     def _load_existing_habits(self):
-        user, routine_details = self.db.load_user_profile_with_colors()
-        if user:
-            self.entry_name.delete(0, tk.END)
-            self.entry_name.insert(0, user.full_name)
-            self.entry_wake.delete(0, tk.END)
-            self.entry_wake.insert(0, user.wake_time.strftime("%H:%M"))
-            self.entry_sleep.delete(0, tk.END)
-            self.entry_sleep.insert(0, user.sleep_time.strftime("%H:%M"))
-
-            lunch_slots = [r for r in routine_details if r["slot"].title == "Lunch Break"]
-            other_slots = [r for r in routine_details if r["slot"].title != "Lunch Break"]
-
-            if lunch_slots:
-                first_lunch = lunch_slots[0]
-                self.var_lunch.set(True)
-                self.entry_lunch_time.delete(0, tk.END)
-                self.entry_lunch_time.insert(0, first_lunch["slot"].start_clock.strftime("%H:%M"))
-                self.entry_lunch_dur.delete(0, tk.END)
-                self.entry_lunch_dur.insert(0, str(first_lunch["slot"].duration_minutes))
-                self.color_lunch.set(first_lunch["color_hex"])
-                self.btn_lunch_color.configure(bg=first_lunch["color_hex"])
-            else:
-                self.var_lunch.set(False)
-                self._toggle_lunch()
-
-            grouped = {}
-            for r_item in other_slots:
-                slot = r_item["slot"]
-                key = (slot.title, slot.start_clock.strftime("%H:%M"), slot.duration_minutes, r_item["color_hex"])
-                if key not in grouped:
-                    grouped[key] = []
-                grouped[key].append(slot.day_of_week)
-
-            for (h_name, h_time, h_dur, h_col), days_list in grouped.items():
-                self._add_habit_row(name=h_name, def_time=h_time, def_dur=str(h_dur), def_color=h_col, initial_days=days_list)
-
-        if not self.habit_rows:
-            self._add_habit_row(name="", def_time="18:00", def_dur="60", def_color="#bbf7d0")
-
-        if not user:
-            self.entry_name.insert(0, "User")
-            self.entry_wake.insert(0, "07:00")
-            self.entry_sleep.insert(0, "23:00")
-            self.entry_lunch_time.insert(0, "13:00")
-            self.entry_lunch_dur.insert(0, "45")
+            user, routine_details = self.db.load_user_profile_with_colors()
+            if user:
+                self.entry_name.delete(0, tk.END)
+                self.entry_name.insert(0, user.full_name)
+                self.entry_wake.delete(0, tk.END)
+                self.entry_wake.insert(0, user.wake_time.strftime("%H:%M"))
+                self.entry_sleep.delete(0, tk.END)
+                self.entry_sleep.insert(0, user.sleep_time.strftime("%H:%M"))
+    
+                lunch_slots = [r for r in routine_details if r["slot"].title == "Lunch Break"]
+                other_slots = [r for r in routine_details if r["slot"].title != "Lunch Break"]
+    
+                if lunch_slots:
+                    first_lunch = lunch_slots[0]
+                    self.var_lunch.set(True)
+                    self.entry_lunch_time.delete(0, tk.END)
+                    self.entry_lunch_time.insert(0, first_lunch["slot"].start_clock.strftime("%H:%M"))
+                    self.entry_lunch_dur.delete(0, tk.END)
+                    self.entry_lunch_dur.insert(0, str(first_lunch["slot"].duration_minutes))
+                    self.color_lunch.set(first_lunch["color_hex"])
+                    self.btn_lunch_color.configure(bg=first_lunch["color_hex"])
+                else:
+                    self.var_lunch.set(False)
+                    self._toggle_lunch()
+    
+                grouped = {}
+                for r_item in other_slots:
+                    slot = r_item["slot"]
+                    key = (slot.title, slot.start_clock.strftime("%H:%M"), slot.duration_minutes, r_item["color_hex"])
+                    if key not in grouped:
+                        grouped[key] = []
+                    grouped[key].append(slot.day_of_week)
+    
+                for (h_name, h_time, h_dur, h_col), days_list in grouped.items():
+                    self._add_habit_row(name=h_name, def_time=h_time, def_dur=str(h_dur), def_color=h_col, initial_days=days_list)
+    
+            if not self.habit_rows:
+                self._add_habit_row(name="", def_time="18:00", def_dur="60", def_color="#bbf7d0")
+    
+            if not user:
+                self.entry_name.insert(0, "User")
+                self.entry_wake.insert(0, "07:00")
+                self.entry_sleep.insert(0, "23:00")
+                self.entry_lunch_time.insert(0, "13:00")
+                self.entry_lunch_dur.insert(0, "45")
 
     def _pick_color(self, target_var: tk.StringVar, target_btn: tk.Button):
         color = colorchooser.askcolor(title="Choose Color")[1]
@@ -301,10 +317,14 @@ class OnboardingDialog(tk.Toplevel):
 
             routines: List[RoutineSlot] = []
             routine_colors: List[str] = []
+            routine_reminders: List[int] = []
+
+            rem_map = {"None": 0, "15 min before": 15, "30 min before": 30, "1 hour before": 60}
 
             if self.var_lunch.get():
                 lunch_t = datetime.strptime(self.entry_lunch_time.get().strip(), "%H:%M").time()
                 lunch_dur = int(self.entry_lunch_dur.get().strip())
+                lunch_rem = rem_map.get(self.lunch_rem_var.get(), 0)
                 for day in range(7):
                     routines.append(RoutineSlot(
                         title="Lunch Break", category="Personal",
@@ -312,6 +332,7 @@ class OnboardingDialog(tk.Toplevel):
                         buffer_before_minutes=5, buffer_after_minutes=5
                     ))
                     routine_colors.append(self.color_lunch.get())
+                    routine_reminders.append(lunch_rem)
 
             for item in self.habit_rows:
                 h_name = item.entry_name.get().strip()
@@ -320,6 +341,7 @@ class OnboardingDialog(tk.Toplevel):
                     h_t = datetime.strptime(item.entry_time.get().strip(), "%H:%M").time()
                     h_dur = int(item.entry_dur.get().strip())
                     h_color = item.color_var.get()
+                    h_rem = rem_map.get(item.reminder_var.get(), 0)
 
                     for d in selected_days:
                         routines.append(RoutineSlot(
@@ -328,9 +350,10 @@ class OnboardingDialog(tk.Toplevel):
                             buffer_before_minutes=10, buffer_after_minutes=10
                         ))
                         routine_colors.append(h_color)
+                        routine_reminders.append(h_rem)
 
             user = UserProfile(id=0, full_name=name, wake_time=wake_t, sleep_time=sleep_t, routines=routines)
-            self.db.save_user_profile_with_colors(user, routine_colors)
+            self.db.save_user_profile_with_colors(user, routine_colors, routine_reminders)
 
             messagebox.showinfo("Habits Locked", f"Saved {len(routines)} recurring slots for {user.full_name}.")
             if self.on_complete_callback:
@@ -339,9 +362,11 @@ class OnboardingDialog(tk.Toplevel):
 
         except Exception as e:
             messagebox.showerror("Validation Error", f"Time must be formatted HH:MM:\n{e}")
+
 class EventActionDialog(tk.Toplevel):
-    def __init__(self, parent: tk.Tk, db: ScheduleDatabase, event_data: dict, on_update_callback):
-        super().__init__(parent)
+    def __init__(self, app: "ScheduleApp", db: ScheduleDatabase, event_data: dict, on_update_callback):
+        super().__init__(app.root)
+        self.app = app
         self.db = db
         self.event_data = event_data
         self.on_update_callback = on_update_callback
@@ -349,7 +374,7 @@ class EventActionDialog(tk.Toplevel):
         self.title(f"Manage Event: {event_data['title']}")
         self.geometry("450x560")
         self.resizable(False, False)
-        self.transient(parent)
+        self.transient(app.root)
         self.grab_set()
 
         self.configure(bg="#f8fafc")
@@ -380,7 +405,7 @@ class EventActionDialog(tk.Toplevel):
             entry.grid(row=row_idx, column=1, sticky="ew", pady=6)
             return entry
 
-        # שדות הטופס
+        #form fields
         self.entry_title = create_form_row(0, "Event Title:")
         self.entry_title.insert(0, self.event_data["title"])
 
@@ -475,7 +500,7 @@ class EventActionDialog(tk.Toplevel):
             total_start = start_dt - timedelta(minutes=new_buf)
             total_end = start_dt + timedelta(minutes=new_dur + new_buf)
 
-            # עדכון ב-DB
+            # update the database record with the new values
             self.db.update_event_record(
                 event_id=self.event_data["id"],
                 title=new_title,
@@ -491,12 +516,14 @@ class EventActionDialog(tk.Toplevel):
                 color_hex=self.event_data["color_hex"],
                 reminder_min=new_rem
             )
-
-            # עדכון המילון המקומי כדי שאם החלון יישאר או ייפתח שוב, הוא יכיר את השינוי
+            # update the local event_data dictionary to reflect the changes
             self.event_data["reminder_min"] = new_rem
 
-            if hasattr(self.master, "_notified_events"):
-                self.master._notified_events.discard(self.event_data["id"])
+            # Reset the notified cache on the app instance
+            # Reset the notified cache on the app instance using matching key format
+            if hasattr(self.app, "_notified_events"):
+                self.app._notified_events.discard(f"ev_{self.event_data['id']}")
+                self.app._notified_events.discard(self.event_data["id"])
 
             messagebox.showinfo("Updated", f"Event '{new_title}' updated successfully!")
             self.on_update_callback()
@@ -747,42 +774,60 @@ class ScheduleApp:
         popup.protocol("WM_DELETE_WINDOW", _on_close)
 
     def _start_reminder_daemon(self):
-        """Periodically checks and alerts ONLY for events where a reminder was specifically requested."""
+        """Periodically checks and alerts for events and recurring routines."""
         import math
         now = datetime.now()
+        today_date = now.date()
+        today_weekday = (today_date.weekday() + 1) % 7
 
         if not hasattr(self, "_notified_events"):
             self._notified_events = set()
 
-        with self.db.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, title, event_date, start_clock, buffer_before_minutes, reminder_min 
-                FROM events 
-                WHERE reminder_min > 0;
-            """)
-            for row in cursor.fetchall():
-                ev_id, title, e_date_str, e_time_str, buf, rem_min = row
+        try:
+            with self.db.get_connection() as conn:
+                cursor = conn.cursor()
                 
-                t_parts = [int(p) for p in e_time_str.split(":")]
-                ev_start = datetime.combine(
-                    date.fromisoformat(e_date_str),
-                    time(t_parts[0], t_parts[1])
-                )
+                # 1. Check one-time / recurring events
+                cursor.execute("""
+                    SELECT id, title, event_date, start_clock, buffer_before_minutes, reminder_min 
+                    FROM events 
+                    WHERE reminder_min > 0;
+                """)
+                for row in cursor.fetchall():
+                    ev_id, title, e_date_str, e_time_str, buf, rem_min = row
+                    t_parts = [int(p) for p in e_time_str.split(":")]
+                    ev_start = datetime.combine(date.fromisoformat(e_date_str), time(t_parts[0], t_parts[1]))
+                    diff_minutes = (ev_start - now).total_seconds() / 60.0
 
-                diff_seconds = (ev_start - now).total_seconds()
-                diff_minutes = diff_seconds / 60.0
+                    if -0.5 <= diff_minutes <= (float(rem_min) + 0.5) and f"ev_{ev_id}" not in self._notified_events:
+                        self._notified_events.add(f"ev_{ev_id}")
+                        disp_min = max(1, math.ceil(diff_minutes))
+                        self._show_reminder_popup(title, disp_min, buf)
 
-                # משתמשים ב-ceil כדי ש-14.8 דקות יוצגו כ-15 דקות בדיוק
-                display_minutes = max(1, math.ceil(diff_minutes))
+                # 2. Check Core Habits / Routines active today
+                cursor.execute("""
+                    SELECT id, title, start_clock, buffer_before_minutes, reminder_min
+                    FROM user_routines
+                    WHERE day_of_week = ? AND reminder_min > 0;
+                """, (today_weekday,))
+                for row in cursor.fetchall():
+                    r_id, r_title, r_clock_str, r_buf, r_rem_min = row
+                    t_parts = [int(p) for p in r_clock_str.split(":")]
+                    r_start = datetime.combine(today_date, time(t_parts[0], t_parts[1]))
+                    diff_minutes = (r_start - now).total_seconds() / 60.0
 
-                # מתריעים רק פעם אחת לאירוע, בדיוק בטווח שנבחר
-                if 0 <= diff_minutes <= rem_min and ev_id not in self._notified_events:
-                    self._notified_events.add(ev_id)
-                    self._show_reminder_popup(title, display_minutes, buf)
+                    # Use daily unique key so it alerts once per day
+                    r_key = f"routine_{r_id}_{today_date.isoformat()}"
+                    if -0.5 <= diff_minutes <= (float(r_rem_min) + 0.5) and r_key not in self._notified_events:
+                        self._notified_events.add(r_key)
+                        disp_min = max(1, math.ceil(diff_minutes))
+                        self._show_reminder_popup(f"Core Habit: {r_title}", disp_min, r_buf)
 
-        # בדיקה חוזרת כל 10 שניות
+        except Exception as err:
+            print(f">>> Reminder Daemon Error: {err}")
+
         self.root.after(10000, self._start_reminder_daemon)
+
     def _trigger_mindful_popup(self):
         # Always convert to integer milliseconds (e.g. 0.5 * 60 * 1000 = 30000)
         interval_ms = int(20 * 60 * 1000)
@@ -803,8 +848,6 @@ class ScheduleApp:
             self.banner_frame.pack(fill="x", padx=15, pady=(2, 4), after=self.root.winfo_children()[0])
 
         # Schedule the next check-in
-        self.root.after(interval_ms, self._trigger_mindful_popup)
-        # Re-schedule the next mindful check-in
         self.root.after(interval_ms, self._trigger_mindful_popup)
 
     def toggle_multiday_ui(self):
@@ -1276,7 +1319,7 @@ class ScheduleApp:
                     self._draw_current_time_indicator(cell_slots[now.hour], now.minute)
 
     def open_event_action_dialog(self, ev_data: dict):
-        EventActionDialog(self.root, self.db, ev_data, on_update_callback=self.render_grid)
+        EventActionDialog(self, self.db, ev_data, on_update_callback=self.render_grid)
 
     def _find_conflicts(self, check_date: date, start_t: time, dur: int, buf: int, recurrence_days: List[str]) -> List[str]:
         """Strict conflict checking that accounts for the mandatory travel/prep buffer window."""

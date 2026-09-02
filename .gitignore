@@ -2,3 +2,9 @@ __pycache__/
 .vscode/
 .DS_Store
 *.db
+# Python cache and compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store

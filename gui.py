@@ -293,7 +293,7 @@ class OnboardingDialog(tk.Toplevel):
                 grouped = {}
                 for r_item in other_slots:
                     slot = r_item["slot"]
-                    key = (slot.title, slot.start_clock.strftime("%H:%M"), slot.duration_minutes, slot.bufferbefore_minutes, r_item["color_hex"])
+                    key = (slot.title, slot.start_clock.strftime("%H:%M"), slot.duration_minutes, slot.buffer_before_minutes, r_item["color_hex"])
                     if key not in grouped:
                         grouped[key] = []
                     grouped[key].append(slot.day_of_week)
@@ -540,27 +540,49 @@ class EventActionDialog(tk.Toplevel):
             total_start = start_dt - timedelta(minutes=new_buf)
             total_end = start_dt + timedelta(minutes=new_dur + new_buf)
 
-            # update the database record with the new values
-            self.db.update_event_record(
-                event_id=self.event_data["id"],
-                title=new_title,
-                category=self.event_data["category"],
-                event_date_str=new_start_d.isoformat(),
-                end_date_str=new_end_d.isoformat(),
-                start_clock_str=new_time.isoformat(),
-                duration=new_dur,
-                buf_before=new_buf,
-                buf_after=new_buf,
-                total_start_str=total_start.isoformat(),
-                total_end_str=total_end.isoformat(),
-                color_hex=self.event_data["color_hex"],
-                reminder_min=new_rem
-            )
+            # ====== כאן מתחיל השינוי ======
+            if self.event_data.get("is_routine"):
+                # אם זה Core Habit (רוטינה) שנערכה - נוסיף אותה לחריגים באותו יום ונייצר אירוע חדש במקום
+                self.db.add_routine_exclusion(self.event_data["id"], self.event_data["event_date"])
+                self.db.save_event_record(
+                    title=new_title,
+                    category=self.event_data["category"],
+                    event_date_str=new_start_d.isoformat(),
+                    end_date_str=new_end_d.isoformat(),
+                    start_clock_str=new_time.isoformat(),
+                    duration=new_dur,
+                    buf_before=new_buf,
+                    buf_after=new_buf,
+                    total_start_str=total_start.isoformat(),
+                    total_end_str=total_end.isoformat(),
+                    color_hex=self.event_data["color_hex"],
+                    recurrence_freq="None",  # הופך לאירוע חד פעמי
+                    recurrence_days="",
+                    reminder_min=new_rem
+                )
+            else:
+                # עדכון רגיל לאירוע שכבר קיים בטבלת האירועים
+                self.db.update_event_record(
+                    event_id=self.event_data["id"],
+                    title=new_title,
+                    category=self.event_data["category"],
+                    event_date_str=new_start_d.isoformat(),
+                    end_date_str=new_end_d.isoformat(),
+                    start_clock_str=new_time.isoformat(),
+                    duration=new_dur,
+                    buf_before=new_buf,
+                    buf_after=new_buf,
+                    total_start_str=total_start.isoformat(),
+                    total_end_str=total_end.isoformat(),
+                    color_hex=self.event_data["color_hex"],
+                    reminder_min=new_rem
+                )
+            # ====== עד כאן השינוי ======
+
             # update the local event_data dictionary to reflect the changes
             self.event_data["reminder_min"] = new_rem
 
             # Reset the notified cache on the app instance
-            # Reset the notified cache on the app instance using matching key format
             if hasattr(self.app, "_notified_events"):
                 self.app._notified_events.discard(f"ev_{self.event_data['id']}")
                 self.app._notified_events.discard(self.event_data["id"])
@@ -575,8 +597,12 @@ class EventActionDialog(tk.Toplevel):
     def _delete_event(self):
         confirm = messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{self.event_data['title']}'?")
         if confirm:
-            self.db.delete_event(self.event_data["id"])
-            messagebox.showinfo("Deleted", "Event removed from calendar.")
+            if self.event_data.get("is_routine"):
+                self.db.add_routine_exclusion(self.event_data["id"], self.event_data["event_date"])
+                messagebox.showinfo("Deleted", "Routine removed from this specific day.")
+            else:
+                self.db.delete_event(self.event_data["id"])
+                messagebox.showinfo("Deleted", "Event removed from calendar.")
             self.on_update_callback()
             self.destroy()
 
@@ -905,7 +931,7 @@ class ScheduleApp:
     def open_recurring_dialog(self):
         dialog = tk.Toplevel(self.root)
         dialog.title("Recurring Event Settings")
-        dialog.geometry("380x420")
+        dialog.geometry("540x420")
         dialog.resizable(False, False)
         dialog.transient(self.root)
         dialog.grab_set()
@@ -922,7 +948,7 @@ class ScheduleApp:
         # taking the saved frequency / the default
         current_freq = "Weekly"
         saved_days = []
-        saved_end_date = str(date.today() + timedelta(days=30))
+        saved_end_date = "2099-12-31" 
 
         if self._temp_recurrence_config:
             current_freq = self._temp_recurrence_config.get("freq", "Weekly")
@@ -940,12 +966,49 @@ class ScheduleApp:
         for lbl in day_labels:
             var = tk.BooleanVar(value=(lbl in saved_days))
             day_vars[lbl] = var
-            tk.Checkbutton(days_frame, text=lbl, variable=var, bg="#ffffff", activebackground="#ffffff", selectcolor="#ffffff").pack(side="left", padx=2)
+            # using ttk.checkbutton for a more modern look
+            ttk.Checkbutton(days_frame, text=lbl, variable=var).pack(side="left", padx=3)
+        # function to enable or disable day selection based on the recurrence type
+        def update_days_state(event=None):
+            if freq_combo.get() == "Weekly":
+                for child in days_frame.winfo_children():
+                    child.configure(state="normal")
+            else:
+                for child in days_frame.winfo_children():
+                    child.configure(state="disabled")
+
+        # קישור הפונקציה לשינוי בתיבת הבחירה והפעלה ראשונית
+        freq_combo.bind("<<ComboboxSelected>>", update_days_state)
+        update_days_state()
 
         tk.Label(container, text="End Recurrence Date (YYYY-MM-DD):", bg="#f8fafc", fg="#0f172a", font=("Helvetica", 9, "bold")).pack(anchor="w")
         end_entry = ttk.Entry(container, width=25)
         end_entry.insert(0, saved_end_date)
-        end_entry.pack(anchor="w", pady=(2, 15))
+        end_entry.pack(anchor="w", pady=(2, 5))
+
+        # btn forever
+        is_forever = tk.BooleanVar(value=(saved_end_date >= "2099-12-31"))
+
+        def toggle_forever():
+            if is_forever.get():
+                end_entry.configure(state="disabled")
+            else:
+                end_entry.configure(state="normal")
+
+        chk_forever = ttk.Checkbutton(container, text="Forever (No End Date)", variable=is_forever, command=toggle_forever)
+        chk_forever.pack(anchor="w", pady=(0, 15))
+        
+        toggle_forever() # restarting the state based on the saved value
+
+        def save_recurrence():
+            # defining 2099-12-31 as the "forever" date if the checkbox is selected
+            final_end_date = "2099-12-31" if is_forever.get() else end_entry.get().strip()
+            self._temp_recurrence_config = {
+                "freq": freq_combo.get(),
+                "days": [lbl for lbl, var in day_vars.items() if var.get()],
+                "end_date": final_end_date
+            }
+            dialog.destroy()
 
         def save_recurrence():
             self._temp_recurrence_config = {
@@ -1141,21 +1204,41 @@ class ScheduleApp:
                 cell_frame.grid_propagate(False)
                 cell_slots[(c_idx - 1, hour)] = cell_frame
 
-        # 1. Routines
+        # 1. Routines (with click-to-edit and exclusions)
+        exclusions = self.db.get_routine_exclusions()
         _, routine_details = self.db.load_user_profile_with_colors()
+        
         for r_info in routine_details:
             r = r_info["slot"]
             d = r.day_of_week
+            col_date = self.current_week_start + timedelta(days=d)
+            
+            # Skip if this specific routine instance was deleted or moved
+            if (r_info["id"], col_date.isoformat()) in exclusions:
+                continue
+                
             color = r_info["color_hex"]
-
             event_start_min = r.start_clock.hour * 60 + r.start_clock.minute
             event_end_min = event_start_min + r.duration_minutes
             details = f"📌 {r.title}\nTime: {r.start_clock.strftime('%H:%M')} ({r.duration_minutes} min)\nCategory: {r.category}"
 
+            # Prepare data so the event dialog knows it's a routine
+            r_data = {
+                "id": r_info["id"],
+                "title": r.title,
+                "category": r.category,
+                "event_date": col_date.isoformat(),
+                "start_clock": r.start_clock.strftime("%H:%M"),
+                "duration_minutes": r.duration_minutes,
+                "buffer_before_minutes": r.buffer_before_minutes,
+                "color_hex": color,
+                "reminder_min": r_info["reminder_min"],
+                "is_routine": True
+            }
+
             for h in range(self.start_hour, self.end_hour + 1):
                 slot_start = h * 60
                 slot_end = (h + 1) * 60
-                # Overlap in this specific hour
                 ov_start = max(event_start_min, slot_start)
                 ov_end = min(event_end_min, slot_end)
                 if ov_start < ov_end:
@@ -1163,7 +1246,8 @@ class ScheduleApp:
                     dur_in_h = ov_end - ov_start
                     txt = f"📌 {r.title}" if ov_start == event_start_min else f"↓ {r.title}"
                     if (d, h) in cell_slots:
-                        self._render_time_slice(cell_slots[(d, h)], start_in_h, dur_in_h, color, txt, details)
+                        self._render_time_slice(cell_slots[(d, h)], start_in_h, dur_in_h, color, txt, details,
+                                                on_click=lambda d_info=r_data: self.open_event_action_dialog(d_info))
 
         # 2. Events with Multi-Hour Proportions, Buffers, and End-of-Month Recurring Logic
         day_tag_to_col = {"Sun": 0, "Mon": 1, "Tue": 2, "Wed": 3, "Thu": 4, "Fri": 5, "Sat": 6}
@@ -1250,7 +1334,7 @@ class ScheduleApp:
                                     f"⏳ Buffer", f"Buffer after '{ev_data['title']}' ({buf_after}m)", is_buffer=True
                                 )
 
-                # Recurrence Matching
+                # Recurrence Matching (Fixed for Yearly/Monthly in Weekly View)
                 if freq == "None" or not freq:
                     for c_idx in range(7):
                         day_dt = self.current_week_start + timedelta(days=c_idx)
@@ -1274,20 +1358,20 @@ class ScheduleApp:
                 elif freq == "Monthly":
                     for c_idx in range(7):
                         day_dt = self.current_week_start + timedelta(days=c_idx)
-                        last_day_of_month = calendar.monthrange(day_dt.year, day_dt.month)[1]
-                        target_day = min(start_d.day, last_day_of_month)
+                        last_day = calendar.monthrange(day_dt.year, day_dt.month)[1]
+                        target_day = min(start_d.day, last_day)
                         if day_dt.day == target_day and start_d <= day_dt <= end_d:
                             draw_event_proportional(c_idx)
 
                 elif freq == "Yearly":
                     for c_idx in range(7):
                         day_dt = self.current_week_start + timedelta(days=c_idx)
+                        # בדיקה האם היום המוצג בעמודה תואם בדיוק לחודש ולתאריך של האירוע
                         if day_dt.month == start_d.month:
                             last_day = calendar.monthrange(day_dt.year, day_dt.month)[1]
                             target_day = min(start_d.day, last_day)
                             if day_dt.day == target_day and start_d <= day_dt <= end_d:
-                                draw_event_proportional(c_idx)
-        # Draw Red Line Indicator for Current Time (Weekly View)
+                                draw_event_proportional(c_idx)        # Draw Red Line Indicator for Current Time (Weekly View)
         now = datetime.now()
         today_date = now.date()
 
@@ -1323,21 +1407,46 @@ class ScheduleApp:
             cell_slots[hour] = cell_frame
 
         target_weekday = (self.current_date.weekday() + 1) % 7
+        
+        # 1. משיכת רשימת החריגים כדי לדעת איזה הרגל בוטל או שונה היום
+        exclusions = self.db.get_routine_exclusions()
         _, routine_details = self.db.load_user_profile_with_colors()
+        
         for r_info in routine_details:
             r = r_info["slot"]
             if r.day_of_week == target_weekday:
+                # 2. דילוג על ההרגל אם הוא נמצא בטבלת החריגים של היום
+                if (r_info["id"], self.current_date.isoformat()) in exclusions:
+                    continue
+
                 event_start_min = r.start_clock.hour * 60 + r.start_clock.minute
                 event_end_min = event_start_min + r.duration_minutes
                 details = f"📌 {r.title}\nTime: {r.start_clock.strftime('%H:%M')} ({r.duration_minutes}m)"
+
+                # 3. אריזת הנתונים כדי שחלון העריכה יידע מאיפה הם באו
+                r_data = {
+                    "id": r_info["id"],
+                    "title": r.title,
+                    "category": r.category,
+                    "event_date": self.current_date.isoformat(),
+                    "start_clock": r.start_clock.strftime("%H:%M"),
+                    "duration_minutes": r.duration_minutes,
+                    "buffer_before_minutes": r.buffer_before_minutes,
+                    "color_hex": r_info["color_hex"],
+                    "reminder_min": r_info["reminder_min"],
+                    "is_routine": True
+                }
 
                 for h in range(self.start_hour, self.end_hour + 1):
                     s_h, e_h = h * 60, (h + 1) * 60
                     ov_s, ov_e = max(event_start_min, s_h), min(event_end_min, e_h)
                     if ov_s < ov_e:
                         txt = f"📌 {r.title}" if ov_s == event_start_min else f"↓ {r.title}"
-                        self._render_time_slice(cell_slots[h], ov_s - s_h, ov_e - ov_s, r_info["color_hex"], txt, details)
-
+                        # 4. הוספת אירוע הלחיצה (on_click) שפותח את חלון העריכה
+                        self._render_time_slice(
+                            cell_slots[h], ov_s - s_h, ov_e - ov_s, r_info["color_hex"], txt, details,
+                            on_click=lambda d_info=r_data: self.open_event_action_dialog(d_info)
+                        )
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -1375,21 +1484,34 @@ class ScheduleApp:
                 freq = ev_data["recurrence_freq"]
 
                 should_render = False
-                if (freq == "None" or not freq) and (start_d <= self.current_date <= end_d):
-                    should_render = True
-                elif freq == "Weekly" and ev_data["recurrence_days"] and today_tag in [d.strip() for d in ev_data["recurrence_days"].split(",")]:
-                    should_render = True
-                elif freq == "Monthly":
-                    last_day = calendar.monthrange(self.current_date.year, self.current_date.month)[1]
-                    target_day = min(start_d.day, last_day)
-                    if self.current_date.day == target_day and self.current_date >= start_d:
+                
+                #make sure the current date is within the event's start and end dates
+                if start_d <= self.current_date <= end_d:
+                    if freq == "None" or not freq:
                         should_render = True
-                elif freq == "Yearly":
-                    if self.current_date.month == start_d.month:
+                        
+                    elif freq == "Weekly":
+                        if ev_data["recurrence_days"]:
+                            if today_tag in [d.strip() for d in ev_data["recurrence_days"].split(",")]:
+                                should_render = True
+                        else:
+            
+                            # for case that a weekly event was saved without selecting days - based on the start day
+                            if self.current_date.weekday() == start_d.weekday():
+                                should_render = True
+                                
+                    elif freq == "Monthly":
                         last_day = calendar.monthrange(self.current_date.year, self.current_date.month)[1]
                         target_day = min(start_d.day, last_day)
-                        if self.current_date.day == target_day and self.current_date >= start_d:
+                        if self.current_date.day == target_day:
                             should_render = True
+                            
+                    elif freq == "Yearly":
+                        if self.current_date.month == start_d.month:
+                            last_day = calendar.monthrange(self.current_date.year, self.current_date.month)[1]
+                            target_day = min(start_d.day, last_day)
+                            if self.current_date.day == target_day:
+                                should_render = True
 
                 if should_render:
                     details = f"🏷 {ev_data['title']}\nTime: {ev_data['start_clock'][:5]} ({ev_data['duration_minutes']} min)\nBuffer: {buf_before}m before, {buf_after}m after"

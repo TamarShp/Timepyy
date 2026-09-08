@@ -90,18 +90,18 @@ class HabitRowItem:
         # Color Button
         self.btn_color = tk.Button(
             form_line, text="Color", bg=self.color_var.get(), width=4, relief="groove",
-            font=("Helvetica", 8, "bold"), cursor="pointinghand", command=self._pick_color
+            font=("Helvetica", 8, "bold"), cursor="hand2", command=self._pick_color
         )
         self.btn_color.grid(row=0, column=10, sticky="w", padx=(0, 4))
 
         # Delete Button
         btn_del = tk.Button(
             form_line, text="✕", bg="#fee2e2", fg="#991b1b", font=("Helvetica", 9, "bold"),
-            relief="flat", width=2, cursor="pointinghand", command=lambda: self.on_delete_callback(self)
+            relief="flat", width=2, cursor="hand2", command=lambda: self.on_delete_callback(self)
         )
         btn_del.grid(row=0, column=11, sticky="e")
         form_line.columnconfigure(11, weight=1)
-        
+       
         # Days Line
         days_line = tk.Frame(self.row_card, bg="#ffffff")
         days_line.pack(fill="x")
@@ -121,14 +121,14 @@ class HabitRowItem:
 
     def _pick_color(self):
         top_window = self.row_card.winfo_toplevel()
-        
+       
         was_topmost = top_window.attributes('-topmost')
         if was_topmost:
             top_window.attributes('-topmost', False)
-            
+           
         #open the color chooser dialog and get the selected color
         color = colorchooser.askcolor(parent=top_window, title="Choose Activity Color")[1]
-        
+       
         if was_topmost:
             top_window.attributes('-topmost', True)
             top_window.lift()
@@ -249,7 +249,7 @@ class OnboardingDialog(tk.Toplevel):
         btn_add_habit = tk.Button(
             self.habits_frame_box, text="➕ Add Another Habit / Routine",
             font=("Helvetica", 10, "bold"), bg="#f1f5f9", fg="#2b6cb0",
-            relief="groove", padx=10, pady=5, cursor="pointinghand", command=lambda: self._add_habit_row()
+            relief="groove", padx=10, pady=5, cursor="hand2", command=lambda: self._add_habit_row()
         )
         btn_add_habit.pack(anchor="w", pady=(8, 2))
 
@@ -260,7 +260,7 @@ class OnboardingDialog(tk.Toplevel):
         btn_finish = tk.Button(
             bottom_bar, text="Lock in Habits & Open Planner", command=self._save_profile,
             font=("Helvetica", 11, "bold"), bg=self.accent_color, fg="black",
-            padx=20, pady=8, relief="raised", bd=1, cursor="pointinghand"
+            padx=20, pady=8, relief="raised", bd=1, cursor="hand2"
         )
         btn_finish.pack()
 
@@ -273,10 +273,10 @@ class OnboardingDialog(tk.Toplevel):
                 self.entry_wake.insert(0, user.wake_time.strftime("%H:%M"))
                 self.entry_sleep.delete(0, tk.END)
                 self.entry_sleep.insert(0, user.sleep_time.strftime("%H:%M"))
-    
+   
                 lunch_slots = [r for r in routine_details if r["slot"].title == "Lunch Break"]
                 other_slots = [r for r in routine_details if r["slot"].title != "Lunch Break"]
-    
+   
                 if lunch_slots:
                     first_lunch = lunch_slots[0]
                     self.var_lunch.set(True)
@@ -289,34 +289,37 @@ class OnboardingDialog(tk.Toplevel):
                 else:
                     self.var_lunch.set(False)
                     self._toggle_lunch()
-    
+   
                 grouped = {}
                 for r_item in other_slots:
                     slot = r_item["slot"]
-                    key = (slot.title, slot.start_clock.strftime("%H:%M"), slot.duration_minutes,slot.bufferbefore_minutes, r_item["color_hex"])
+                    key = (slot.title, slot.start_clock.strftime("%H:%M"), slot.duration_minutes, slot.bufferbefore_minutes, r_item["color_hex"])
                     if key not in grouped:
                         grouped[key] = []
                     grouped[key].append(slot.day_of_week)
-    
-                for (h_name, h_time, h_dur, h_buf, h_col), days_list in grouped.items():
-                    self._add_habit_row(name=h_name, def_time=h_time, def_dur=str(h_dur), def_buf=str(h_buf), def_color=h_col, initial_days=days_list)
-    
+
+                for (h_name, h_time, h_dur, h_buf, h_color), days in grouped.items():
+                    self._add_habit_row(
+                        name=h_name, def_time=h_time, def_dur=str(h_dur),
+                        def_buf=str(h_buf), def_color=h_color, initial_days=days
+                    )
+
             if not self.habit_rows:
                 self._add_habit_row(name="", def_time="18:00", def_dur="60", def_color="#bbf7d0")
-    
+   
             if not user:
                 self.entry_name.insert(0, "User")
                 self.entry_wake.insert(0, "07:00")
                 self.entry_sleep.insert(0, "23:00")
                 self.entry_lunch_time.insert(0, "13:00")
                 self.entry_lunch_dur.insert(0, "45")
-            
+           
 
     def _pick_color(self, target_var: tk.StringVar, target_btn: tk.Button):
         self.attributes('-topmost', False)
         # open the color chooser dialog and get the selected color
         color = colorchooser.askcolor(parent=self, title="Choose Color")[1]
-        
+       
         self.attributes('-topmost', True)
         self.lift()
         self.focus_force()
@@ -376,7 +379,7 @@ class OnboardingDialog(tk.Toplevel):
                 if h_name and selected_days:
                     h_t = datetime.strptime(item.entry_time.get().strip(), "%H:%M").time()
                     h_dur = int(item.entry_dur.get().strip())
-                    h_buf = int(item.entry_buf.get().strip()) # קליטת ה-Buffer מהמשתמש
+                    h_buf = int(item.entry_buf.get().strip())
                     h_color = item.color_var.get()
                     h_rem = rem_map.get(item.reminder_var.get(), 0)
 
@@ -384,7 +387,7 @@ class OnboardingDialog(tk.Toplevel):
                         routines.append(RoutineSlot(
                             title=h_name, category="Health",
                             day_of_week=d, start_clock=h_t, duration_minutes=h_dur,
-                            buffer_before_minutes=h_buf, buffer_after_minutes=h_buf # שימוש ב-Buffer המוגדר
+                            buffer_before_minutes=h_buf, buffer_after_minutes=h_buf
                         ))
                         routine_colors.append(h_color)
                         routine_reminders.append(h_rem)
@@ -497,14 +500,14 @@ class EventActionDialog(tk.Toplevel):
         btn_save = tk.Button(
             btn_frame, text="Save Changes", bg="#2563eb", fg="black",
             highlightbackground="#2563eb", font=("Helvetica", 10, "bold"),
-            padx=14, pady=7, cursor="pointinghand", command=self._save_changes
+            padx=14, pady=7, cursor="hand2", command=self._save_changes
         )
         btn_save.pack(side="left", expand=True, padx=6)
 
         btn_delete = tk.Button(
             btn_frame, text="Delete Event", bg="#dc2626", fg="red",
             highlightbackground="#dc2626", font=("Helvetica", 10, "bold"),
-            padx=14, pady=7, cursor="pointinghand", command=self._delete_event
+            padx=14, pady=7, cursor="hand2", command=self._delete_event
         )
         btn_delete.pack(side="right", expand=True, padx=6)
 
@@ -585,7 +588,7 @@ class ScheduleApp:
         self.analytics = analytics
         self.root.title("TimePy - Smart Weekly & Daily Planner")
         self.root.geometry("1300x900")
-        
+       
         self.bg_dashboard = "#edf2f7"
         self.root.configure(bg=self.bg_dashboard)
 
@@ -693,27 +696,27 @@ class ScheduleApp:
 
         btn_submit = ttk.Button(form_frame, text="Schedule Event", command=self.add_event)
         btn_submit.grid(row=1, column=8, columnspan=2, sticky="e", padx=(10, 4), pady=3)
+       
         rec_frame = tk.Frame(form_frame, bg="#ffffff", padx=8, pady=4, relief="groove", bd=1)
         rec_frame.grid(row=2, column=0, columnspan=10, sticky="ew", pady=(4, 2))
 
         self.is_recurring = tk.BooleanVar(value=False)
-        chk_rec = ttk.Checkbutton(rec_frame, text="Repeating Event", variable=self.is_recurring, command=self.toggle_recurrence_ui)
+        self._temp_recurrence_config = None  # משתנה זמני לשמירת ההגדרות מהחלון הנפתח
+        
+        chk_rec = ttk.Checkbutton(
+            rec_frame, text="Repeating Event", 
+            variable=self.is_recurring, 
+            command=self.toggle_recurrence_ui
+        )
         chk_rec.grid(row=0, column=0, sticky="w", padx=4)
 
-        ttk.Label(rec_frame, text="Frequency:").grid(row=0, column=1, padx=(6, 2))
-        self.combo_freq = ttk.Combobox(rec_frame, values=["Weekly", "Monthly", "Yearly"], width=9, state="disabled")
-        self.combo_freq.current(0)
-        self.combo_freq.grid(row=0, column=2, padx=4)
-        self.combo_freq.bind("<<ComboboxSelected>>", self.on_freq_change)
-        self.days_vars = {}
-        day_labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-        days_box = tk.Frame(rec_frame, bg="#ffffff")
-        days_box.grid(row=0, column=3, padx=(10, 4))
-        for lbl in day_labels:
-            var = tk.BooleanVar(value=False)
-            chk = ttk.Checkbutton(days_box, text=lbl, variable=var, state="disabled")
-            chk.pack(side="left", padx=2)
-            self.days_vars[lbl] = (var, chk)
+        # כפתור עזר מהיר לעריכת ההגדרות מבלי לסגור את הטופס
+        self.btn_edit_rec = ttk.Button(
+            rec_frame, text="⚙ Edit Recurrence Settings", 
+            command=self.open_recurring_dialog,
+            state="disabled"
+        )
+        self.btn_edit_rec.grid(row=0, column=1, padx=10)
 
         # Navigation
         nav_bar = tk.Frame(root, bg=self.bg_dashboard, padx=15, pady=4)
@@ -759,7 +762,7 @@ class ScheduleApp:
         self.root.after(3000, self._trigger_mindful_popup)
         self._start_reminder_daemon()
         self._auto_refresh_time_indicator()
-    
+   
     def _play_alert_sound(self):
         """Plays a gentle native macOS alert sound."""
         import subprocess
@@ -827,14 +830,16 @@ class ScheduleApp:
                     t_parts = [int(p) for p in e_time_str.split(":")]
                     ev_start = datetime.combine(date.fromisoformat(e_date_str), time(t_parts[0], t_parts[1]))
                     
-                    # חיסור ה-Buffer משעת ההתחלה כדי לקבל את זמן ההתראה האמיתי
                     effective_start = ev_start - timedelta(minutes=buf)
-                    diff_minutes = (effective_start - now).total_seconds() / 60.0
+                    diff_seconds = (effective_start - now).total_seconds()
+                    diff_minutes = diff_seconds / 60.0
 
-                    if -0.5 <= diff_minutes <= (float(rem_min) + 0.5) and f"ev_{ev_id}" not in self._notified_events:
+                    # בדיקה האם הגענו לדקה המדויקת של ההתראה (עיגול יציב למניעת קפיצות של דקות לא עגולות)
+                    target_rem_seconds = float(rem_min) * 60.0
+                    if -30 <= (diff_seconds - target_rem_seconds) <= 30 and f"ev_{ev_id}" not in self._notified_events:
                         self._notified_events.add(f"ev_{ev_id}")
-                        disp_min = max(1, math.ceil(diff_minutes))
-                        self._show_reminder_popup(title, disp_min, buf)
+                        # הצגת הערך העגול והמדויק שהוגדר בדיוק (למשל 15 במקום 16)
+                        self._show_reminder_popup(title, int(rem_min), buf)
 
                 # בדיקת הרגלים קבועים
                 exclusions = self.db.get_routine_exclusions()
@@ -848,15 +853,14 @@ class ScheduleApp:
                     t_parts = [int(p) for p in r_clock_str.split(":")]
                     r_start = datetime.combine(today_date, time(t_parts[0], t_parts[1]))
                     
-                    # חיסור ה-Buffer משעת ההתחלה להרגלים
                     effective_start = r_start - timedelta(minutes=r_buf)
-                    diff_minutes = (effective_start - now).total_seconds() / 60.0
+                    diff_seconds = (effective_start - now).total_seconds()
 
                     r_key = f"routine_{r_id}_{today_date.isoformat()}"
-                    if -0.5 <= diff_minutes <= (float(r_rem_min) + 0.5) and r_key not in self._notified_events:
+                    target_rem_seconds = float(r_rem_min) * 60.0
+                    if -30 <= (diff_seconds - target_rem_seconds) <= 30 and r_key not in self._notified_events:
                         self._notified_events.add(r_key)
-                        disp_min = max(1, math.ceil(diff_minutes))
-                        self._show_reminder_popup(f"Core Habit: {r_title}", disp_min, r_buf)
+                        self._show_reminder_popup(f"Core Habit: {r_title}", int(r_rem_min), r_buf)
 
         except Exception as err:
             print(f">>> Reminder Daemon Error: {err}")
@@ -877,7 +881,7 @@ class ScheduleApp:
             import random
             selected = random.choice(messages)
             self.lbl_banner.configure(text=f"🌿 Friendly Check-in: {selected}")
-            
+           
             # Repack banner cleanly below the top control bar
             self.banner_frame.pack_forget()
             self.banner_frame.pack(fill="x", padx=15, pady=(2, 4), after=self.root.winfo_children()[0])
@@ -890,19 +894,81 @@ class ScheduleApp:
         self.entry_end_date.configure(state=state)
 
     def toggle_recurrence_ui(self):
-        state = "readonly" if self.is_recurring.get() else "disabled"
-        self.combo_freq.configure(state=state)
-        self.on_freq_change()
+            if self.is_recurring.get():
+                self.btn_edit_rec.configure(state="normal")
+                if not self._temp_recurrence_config:
+                    self.open_recurring_dialog()
+            else:
+                self.btn_edit_rec.configure(state="disabled")
+                self._temp_recurrence_config = None
 
-    def on_freq_change(self, event=None):
-        """Enable day checkboxes ONLY when frequency is Weekly."""
-        is_weekly = self.is_recurring.get() and (self.combo_freq.get() == "Weekly")
-        day_state = "normal" if is_weekly else "disabled"
+    def open_recurring_dialog(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Recurring Event Settings")
+        dialog.geometry("380x420")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.configure(bg="#f8fafc")
 
-        for var, chk in self.days_vars.values():
-            if not is_weekly:
-                var.set(False)  # Clear days when not weekly
-            chk.configure(state=day_state)
+        container = tk.Frame(dialog, bg="#f8fafc", padx=16, pady=16)
+        container.pack(fill="both", expand=True)
+
+        tk.Label(container, text="Configure Recurrence", font=("Helvetica", 12, "bold"), bg="#f8fafc", fg="#1e3a8a").pack(anchor="w", pady=(0, 10))
+
+        tk.Label(container, text="Frequency:", bg="#f8fafc", fg="#0f172a", font=("Helvetica", 9, "bold")).pack(anchor="w")
+        freq_combo = ttk.Combobox(container, values=["Weekly", "Monthly", "Yearly"], state="readonly", width=25)
+
+        # taking the saved frequency / the default
+        current_freq = "Weekly"
+        saved_days = []
+        saved_end_date = str(date.today() + timedelta(days=30))
+
+        if self._temp_recurrence_config:
+            current_freq = self._temp_recurrence_config.get("freq", "Weekly")
+            saved_days = self._temp_recurrence_config.get("days", [])
+            saved_end_date = self._temp_recurrence_config.get("end_date", saved_end_date)
+
+        freq_combo.set(current_freq)
+        freq_combo.pack(anchor="w", pady=(2, 10))
+
+        days_frame = tk.LabelFrame(container, text=" Select Days (for Weekly) ", bg="#ffffff", fg="#0f172a", font=("Helvetica", 9, "bold"), padx=10, pady=10)
+        days_frame.pack(fill="x", pady=(0, 10))
+
+        day_vars = {}
+        day_labels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        for lbl in day_labels:
+            var = tk.BooleanVar(value=(lbl in saved_days))
+            day_vars[lbl] = var
+            tk.Checkbutton(days_frame, text=lbl, variable=var, bg="#ffffff", activebackground="#ffffff", selectcolor="#ffffff").pack(side="left", padx=2)
+
+        tk.Label(container, text="End Recurrence Date (YYYY-MM-DD):", bg="#f8fafc", fg="#0f172a", font=("Helvetica", 9, "bold")).pack(anchor="w")
+        end_entry = ttk.Entry(container, width=25)
+        end_entry.insert(0, saved_end_date)
+        end_entry.pack(anchor="w", pady=(2, 15))
+
+        def save_recurrence():
+            self._temp_recurrence_config = {
+                "freq": freq_combo.get(),
+                "days": [lbl for lbl, var in day_vars.items() if var.get()],
+                "end_date": end_entry.get().strip()
+            }
+            dialog.destroy()
+
+        def cancel_recurrence():
+            if not self._temp_recurrence_config:
+                self.is_recurring.set(False)
+                self.btn_edit_rec.configure(state="disabled")
+            dialog.destroy()
+
+        btn_frame = tk.Frame(container, bg="#f8fafc")
+        btn_frame.pack(fill="x")
+
+        tk.Button(btn_frame, text="Apply", bg="#2563eb", fg="black", font=("Helvetica", 9, "bold"), padx=12, pady=5, command=save_recurrence).pack(side="left", expand=True)
+        tk.Button(btn_frame, text="Cancel", bg="#e2e8f0", fg="#0f172a", font=("Helvetica", 9, "bold"), padx=12, pady=5, command=cancel_recurrence).pack(side="right", expand=True)
+        
+        dialog.protocol("WM_DELETE_WINDOW", cancel_recurrence)
+
     def switch_view(self):
         self.render_grid()
 
@@ -1022,14 +1088,14 @@ class ScheduleApp:
         ToolTip(lbl, lambda: full_details)
 
         if on_click:
-            sub_frame.configure(cursor="pointinghand")
-            lbl.configure(cursor="pointinghand")
+            sub_frame.configure(cursor="hand2")
+            lbl.configure(cursor="hand2")
             sub_frame.bind("<Button-1>", lambda e: on_click())
             lbl.bind("<Button-1>", lambda e: on_click())
     def _draw_current_time_indicator(self, parent_cell: tk.Frame, current_min: int):
         """Draws a crisp red line with a small circle indicating the exact current minute."""
         rel_y = current_min / 60.0
-        
+       
         indicator_frame = tk.Frame(parent_cell, bg="#ef4444", height=2)
         indicator_frame.place(relx=0.0, rely=rel_y, relwidth=1.0, height=2)
 
@@ -1195,17 +1261,22 @@ class ScheduleApp:
                     if ev_data["recurrence_days"]:
                         for d_tag in [d.strip() for d in ev_data["recurrence_days"].split(",") if d.strip()]:
                             if d_tag in day_tag_to_col:
-                                draw_event_proportional(day_tag_to_col[d_tag])
+                                c_idx = day_tag_to_col[d_tag]
+                                day_dt = self.current_week_start + timedelta(days=c_idx)
+                                if start_d <= day_dt <= end_d:
+                                    draw_event_proportional(c_idx)
                     else:
-                        draw_event_proportional((start_d.weekday() + 1) % 7)
+                        c_idx = (start_d.weekday() + 1) % 7
+                        day_dt = self.current_week_start + timedelta(days=c_idx)
+                        if start_d <= day_dt <= end_d:
+                            draw_event_proportional(c_idx)
 
                 elif freq == "Monthly":
                     for c_idx in range(7):
                         day_dt = self.current_week_start + timedelta(days=c_idx)
-                        # Fix for 31st recurrence in 30-day/28-day months
                         last_day_of_month = calendar.monthrange(day_dt.year, day_dt.month)[1]
                         target_day = min(start_d.day, last_day_of_month)
-                        if day_dt.day == target_day and day_dt >= start_d:
+                        if day_dt.day == target_day and start_d <= day_dt <= end_d:
                             draw_event_proportional(c_idx)
 
                 elif freq == "Yearly":
@@ -1214,7 +1285,7 @@ class ScheduleApp:
                         if day_dt.month == start_d.month:
                             last_day = calendar.monthrange(day_dt.year, day_dt.month)[1]
                             target_day = min(start_d.day, last_day)
-                            if day_dt.day == target_day and day_dt >= start_d:
+                            if day_dt.day == target_day and start_d <= day_dt <= end_d:
                                 draw_event_proportional(c_idx)
         # Draw Red Line Indicator for Current Time (Weekly View)
         now = datetime.now()
@@ -1322,7 +1393,7 @@ class ScheduleApp:
 
                 if should_render:
                     details = f"🏷 {ev_data['title']}\nTime: {ev_data['start_clock'][:5]} ({ev_data['duration_minutes']} min)\nBuffer: {buf_before}m before, {buf_after}m after"
-                    
+                   
                     # Buffer Before
                     if buf_before > 0:
                         b_s, b_e = ev_start_min - buf_before, ev_start_min
@@ -1453,13 +1524,21 @@ class ScheduleApp:
             }
             reminder_min = reminder_mapping.get(reminder_str, 0)
 
-            # 2. חזרתיות
-            freq = self.combo_freq.get() if self.is_recurring.get() else "None"
-            selected_days = []
-            if self.is_recurring.get() and freq == "Weekly":
-                for day_label, (var, _) in self.days_vars.items():
-                    if var.get():
-                        selected_days.append(day_label)
+        
+            # 2. חזרתיות ותאריך סיום מהחלון הנפתח
+            if self.is_recurring.get() and self._temp_recurrence_config:
+                freq = self._temp_recurrence_config.get("freq", "None")
+                selected_days = self._temp_recurrence_config.get("days", [])
+                end_date_str = self._temp_recurrence_config.get("end_date")
+                if end_date_str:
+                    end_d = date.fromisoformat(end_date_str)
+            else:
+                freq = "None"
+                selected_days = []
+
+            if end_d < start_d:
+                messagebox.showerror("Error", "End date cannot be earlier than start date.")
+                return
 
             # 3. בדיקת חפיפות (כולל ה-buffer)
             conflicts = self._find_conflicts(start_d, e_time, dur, buf, selected_days)
@@ -1533,10 +1612,5 @@ class ScheduleApp:
             self.combo_cat.current(0)
 
         self.is_recurring.set(False)
-        self.combo_freq.configure(state="disabled")
-        self.combo_freq.current(0)
+        self._temp_recurrence_config = None
         self.combo_reminder.current(0)
-
-        for var, chk in self.days_vars.values():
-            var.set(False)
-            chk.configure(state="disabled")
